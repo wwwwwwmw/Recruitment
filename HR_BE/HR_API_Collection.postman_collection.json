@@ -1,0 +1,15 @@
+{
+  "info": {
+    "name": "HR Recruitment API",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {"name":"Health","request":{"method":"GET","url":"{{baseUrl}}/health"}},
+    {"name":"Jobs list","request":{"method":"GET","url":"{{baseUrl}}/api/jobs"}},
+    {"name":"Processes list","request":{"method":"GET","url":"{{baseUrl}}/api/processes"}},
+    {"name":"Applications list","request":{"method":"GET","url":"{{baseUrl}}/api/applications"}}
+  ],
+  "variable": [
+    {"key": "baseUrl", "value": "http://localhost:4000"}
+  ]
+}
