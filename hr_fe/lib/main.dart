@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 import 'services/api.dart';
@@ -30,11 +31,18 @@ class HRApp extends StatelessWidget {
             GoRoute(path: '/login', builder: (_, __)=> const LoginScreen()),
             GoRoute(path: '/signup', builder: (_, __)=> const SignupScreen()),
             GoRoute(path: '/', builder: (_, __) => const RoleDashboard()),
+            GoRoute(path: '/my-profile', builder: (_, __) => const MyProfileScreen()),
+            GoRoute(path: '/criteria', builder: (_, __) => const CriteriaAdminScreen()),
             GoRoute(path: '/my-candidates', builder: (_, __) => const MyCandidatesScreen()),
             GoRoute(path: '/jobs/:id', builder: (ctx, state) => JobDetailScreen(jobId: int.parse(state.pathParameters['id']!))),
             GoRoute(path: '/jobs', builder: (_, __) => const JobsScreen()),
+            GoRoute(path: '/my-jobs', builder: (_, __) => const JobsScreen(mine: true)),
             GoRoute(path: '/processes', builder: (_, __) => const ProcessesScreen()),
             GoRoute(path: '/applications', builder: (_, __) => const ApplicationsScreen()),
+            GoRoute(path: '/applications/:id', builder: (ctx, state) => ApplicationDetailScreen(
+              appId: int.parse(state.pathParameters['id']!),
+              initialScores: state.extra is Map<String,dynamic>? ? state.extra as Map<String,dynamic>? : null,
+            )),
             GoRoute(path: '/evaluations', builder: (_, __) => const EvaluationsScreen()),
             GoRoute(path: '/interviews', builder: (_, __) => const InterviewsScreen()),
             GoRoute(path: '/committees', builder: (_, __) => const CommitteesScreen()),
@@ -67,35 +75,38 @@ class RoleDashboard extends StatelessWidget {
     final List<_NavTile> tiles = [];
     if (role == 'admin' || role == 'recruiter') {
       tiles.addAll([
-        _NavTile('Thiết lập quy trình', '/processes', Icons.account_tree),
-        // Recruiter sẽ quản lý việc làm của mình tại cùng đường dẫn /jobs
-        _NavTile(role=='recruiter' ? 'Việc làm của tôi' : 'Đăng tin tuyển dụng', '/jobs', Icons.work_outline),
-        _NavTile('Sàng lọc/Đánh giá', '/evaluations', Icons.rate_review_outlined),
-        _NavTile('Lịch phỏng vấn', '/interviews', Icons.event_outlined),
-        if (role=='recruiter') _NavTile('Ứng viên của tôi', '/my-candidates', Icons.people_alt_outlined),
+        // Tin tuyển dụng: xem tất cả jobs
+        _NavTile('Tin tuyển dụng', '/jobs', Icons.work_outline),
+        _NavTile('Sàng lọc & Đánh giá', '/evaluations', Icons.rate_review_outlined),
+        _NavTile('Đặt phỏng vấn', '/interviews', Icons.event_available),
       ]);
     }
     if (role == 'admin') {
       tiles.addAll([
         _NavTile('Quản lý người dùng', '/users', Icons.manage_accounts_outlined),
-        _NavTile('Hội đồng tuyển dụng', '/committees', Icons.group_work_outlined),
         _NavTile('Báo cáo', '/reports', Icons.pie_chart_outline),
+        _NavTile('Tiêu chí đánh giá', '/criteria', Icons.tune),
       ]);
     }
     tiles.addAll([
-      _NavTile(role=='recruiter' ? 'Việc làm của tôi' : 'Việc làm', '/jobs', Icons.work_history_outlined),
+      _NavTile(role=='recruiter' ? 'Việc làm của tôi' : 'Việc làm', role=='recruiter'? '/my-jobs' : '/jobs', Icons.work_history_outlined),
+      if (role=='recruiter') _NavTile('Ứng viên của tôi', '/my-candidates', Icons.people_outline),
       if (role!='recruiter') _NavTile('Ứng tuyển của tôi', '/applications', Icons.assignment_outlined),
-      _NavTile('Thư mời nhận việc', '/offers', Icons.mail_outline),
+      if (role=='candidate') _NavTile('Hồ sơ của tôi', '/my-profile', Icons.badge_outlined),
+      _NavTile('Thông báo', '/offers', Icons.mail_outline),
       _NavTile('Kết quả', '/results', Icons.verified_outlined),
     ]);
     return Scaffold(
-      appBar: AppBar(title: Text(title), actions: [
-        TextButton.icon(
-          onPressed: ()=> context.read<AuthState>().logout(),
-          icon: const Icon(Icons.logout, color: Colors.white),
-          label: const Text('Logout', style: TextStyle(color: Colors.white)),
-        )
-      ]),
+      appBar: AppBar(
+        title: Text(title),
+        actions: [
+          TextButton.icon(
+            onPressed: ()=> context.read<AuthState>().logout(),
+            icon: const Icon(Icons.logout, color: Colors.white),
+            label: const Text('Logout', style: TextStyle(color: Colors.white)),
+          )
+        ],
+      ),
       body: GridView.count(
         padding: const EdgeInsets.all(16),
         crossAxisCount: 2,
@@ -133,30 +144,136 @@ class _Tile extends StatelessWidget {
 }
 
 // Below are simple placeholder screens; you can enhance with lists/forms calling APIs.
-class JobsScreen extends StatefulWidget { const JobsScreen({super.key}); @override State<JobsScreen> createState()=> _JobsScreenState(); }
+class CriteriaDef { final String key; final String label; final double min; final double max; final double step; const CriteriaDef(this.key,this.label,{required this.min, required this.max, this.step=1}); }
+
+Future<List<CriteriaDef>> fetchCriteria() async {
+  final list = await apiGetList('/criteria');
+  if (list.isEmpty) return const [];
+  return list.map((e){
+    return CriteriaDef(
+      (e['key']??'').toString(),
+      (e['label']??'').toString(),
+      min: (double.tryParse('${e['min']}') ?? 0),
+      max: (double.tryParse('${e['max']}') ?? 100),
+      step: (double.tryParse('${e['step']}') ?? 1),
+    );
+  }).cast<CriteriaDef>().toList();
+}
+
+class MyProfileScreen extends StatefulWidget { const MyProfileScreen({super.key}); @override State<MyProfileScreen> createState()=> _MyProfileScreenState(); }
+class _MyProfileScreenState extends State<MyProfileScreen>{
+  List<CriteriaDef> _criteria = const [];
+  final Map<String, TextEditingController> _ctrl = {};
+  final _extra = TextEditingController(); bool _busy=false; String? _error; List<Map<String,String>> _certs=[];
+  @override void dispose(){ for(final c in _ctrl.values){ c.dispose(); } _extra.dispose(); super.dispose(); }
+  Future<void> _load() async {
+    try{
+      final me = await apiGet('/profiles/me');
+      final crit = await fetchCriteria();
+      setState(()=> _criteria = crit);
+      for (final c in crit){ _ctrl[c.key] = TextEditingController(); }
+      final scores = (me['scores'] ?? {}) as Map<String,dynamic>;
+      for(final c in crit){ final v = scores[c.key]; if (v!=null) _ctrl[c.key]!.text = v.toString(); }
+      final extra = (me['extra'] ?? {})['notes']?.toString() ?? '';
+      _extra.text = extra;
+      final certs = (me['extra'] ?? {})['certificates'];
+      if (certs is List){
+        _certs = certs.map((e)=>{
+          'type': (e['type']??'').toString(),
+          'name': (e['name']??'').toString(),
+          'url': (e['url']??'').toString(),
+        }).toList();
+      }
+    }catch(_){ /* ignore */ }
+  }
+  @override void initState(){ super.initState(); _load(); }
+  @override Widget build(BuildContext c){
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Hồ sơ của tôi'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)]
+      ),
+      body: SingleChildScrollView(
+        padding: const EdgeInsets.all(12),
+        child: Column(children: [
+          ..._criteria.map((cd){
+            return Padding(padding: const EdgeInsets.symmetric(vertical: 6), child: TextField(
+              controller: _ctrl[cd.key], keyboardType: TextInputType.number,
+              decoration: InputDecoration(labelText: '${cd.label}'),
+            ));
+          }),
+          TextField(controller: _extra, maxLines: 4, decoration: const InputDecoration(labelText: 'Thông tin thêm (tuỳ chọn)')),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text('Chứng chỉ & Minh chứng', style: Theme.of(c).textTheme.titleSmall)),
+          ..._certs.asMap().entries.map((e){ final i=e.key; final item=e.value; return Row(children:[
+            SizedBox(width: 120, child: TextField(controller: TextEditingController(text:item['type']), decoration: const InputDecoration(hintText:'Loại (IELTS, ...)'), onChanged:(v)=> _certs[i]['type']=v)),
+            const SizedBox(width: 8),
+            Expanded(child: TextField(controller: TextEditingController(text:item['name']), decoration: const InputDecoration(hintText:'Tên chứng chỉ'), onChanged:(v)=> _certs[i]['name']=v)),
+            const SizedBox(width: 8),
+            Expanded(child: TextField(controller: TextEditingController(text:item['url']), decoration: const InputDecoration(hintText:'Liên kết minh chứng'), onChanged:(v)=> _certs[i]['url']=v)),
+            IconButton(icon: const Icon(Icons.close), onPressed: ()=> setState(()=> _certs.removeAt(i)))
+          ]); }),
+          Align(alignment: Alignment.centerLeft, child: TextButton.icon(onPressed: ()=> setState(()=> _certs.add({'type':'','name':'','url':''})), icon: const Icon(Icons.add), label: const Text('Thêm chứng chỉ'))),
+          if (_error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(_error!, style: const TextStyle(color: Colors.red))),
+          const SizedBox(height: 8),
+          ElevatedButton(onPressed: _busy? null : () async {
+            setState((){ _busy=true; _error=null; });
+            try{
+              final scores = <String,double>{};
+              for(final cd in _criteria){ final t = (_ctrl[cd.key]?.text ?? '').trim(); if (t.isNotEmpty){ final v = double.tryParse(t); if (v!=null) scores[cd.key]=v; } }
+              final body = { 'scores': scores, 'extra': { 'notes': _extra.text.trim().isEmpty? null : _extra.text.trim(), 'certificates': _certs } };
+              await apiPut('/profiles/me', body);
+              if (mounted) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Đã lưu hồ sơ')));
+            }catch(e){ setState(()=> _error='Lưu thất bại'); }
+            finally{ if (mounted) setState(()=> _busy=false); }
+          }, child: const Text('Lưu hồ sơ')),
+        ]),
+      ),
+    );
+  }
+}
+class JobsScreen extends StatefulWidget {
+  final bool mine; const JobsScreen({super.key, this.mine=false});
+  @override State<JobsScreen> createState()=> _JobsScreenState();
+}
 class _JobsScreenState extends State<JobsScreen>{
-  int _tick=0;
+  int _tick=0; final _search = TextEditingController();
   Future<List<dynamic>> _load(BuildContext c){
-    final role = c.read<AuthState>().role;
     final params = <String,dynamic>{};
-    if (role=='recruiter') params['mine']='true';
+    if (widget.mine) params['mine']='true';
+    if (_search.text.isNotEmpty) params['q'] = _search.text;
     return apiGetList('/jobs', params: params);
   }
   @override 
   Widget build(BuildContext c){
-    final role = c.watch<AuthState>().role;
+    final role = c.watch<AuthState>().role; final meId = c.watch<AuthState>().user?['id'];
     return Scaffold(
       appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
-        title: Text(role=='recruiter' ? 'Việc làm của tôi' : 'Việc làm'),
+        title: Text(widget.mine? 'Việc làm của tôi' : 'Việc làm'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))]
       ),
-      body: FutureBuilder<List<dynamic>>(
-        key: ValueKey(_tick),
-        future: _load(c),
-        builder: (context, snap){
+      body: Column(children:[
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: TextField(
+            controller: _search,
+            decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm theo tiêu đề/phòng ban/địa điểm'),
+            onSubmitted: (_)=> setState(()=> _tick++),
+          ),
+        ),
+        Expanded(child: FutureBuilder<List<dynamic>>(
+          key: ValueKey(_tick),
+          future: _load(c),
+          builder: (context, snap){
           if (snap.connectionState!=ConnectionState.done) return const Center(child: CircularProgressIndicator());
           if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
-          final items = (snap.data ?? []).cast<Map<String,dynamic>>();
+          var items = (snap.data ?? []).cast<Map<String,dynamic>>();
+          // Hide closed jobs from the public list for candidates
+          if (role=='candidate' && !widget.mine){
+            items = items.where((j)=> (j['status']?.toString() ?? '') != 'closed').toList();
+          }
           return ListView.separated(
             itemCount: items.length,
             separatorBuilder: (_, __)=> const Divider(height: 1),
@@ -164,31 +281,42 @@ class _JobsScreenState extends State<JobsScreen>{
               final j = items[i];
               return ListTile(
                 title: Text(j['title']?.toString()??'Chưa đặt tiêu đề'),
-                subtitle: Text(j['department']?.toString()??''),
+                subtitle: Text('${j['department']??''}${(j['status']!=null)? ' • Trạng thái: ${j['status']}' : ''}'),
                 onTap: ()=> role=='candidate'? c.go('/jobs/${j['id']}') : null,
                 trailing: (role=='admin' || role=='recruiter') ? Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // Admin can always edit/delete; recruiter only on their own jobs (list already filtered when recruiter)
-                    IconButton(icon: const Icon(Icons.edit), onPressed: ()=> _editJobDialog(c, j)),
-                    IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async {
-                      try{ await apiDelete('/jobs/${j['id']}'); setState(()=> _tick++);} catch(_){}}
-                    ),
+                    if (role=='admin' || (role=='recruiter' && j['posted_by']==meId))
+                      IconButton(icon: const Icon(Icons.edit), onPressed: ()=> _editJobDialog(c, j)),
+                    if ((role=='admin' || (role=='recruiter' && j['posted_by']==meId)) && (j['status']?.toString()!='closed'))
+                      IconButton(icon: const Icon(Icons.flag_outlined), tooltip: 'Kết thúc tuyển dụng', onPressed: () async { try{ await apiPost('/jobs/${j['id']}/close', {}); if (mounted) setState(()=> _tick++); } catch(_){ } }),
+                    if (role=='admin' || (role=='recruiter' && j['posted_by']==meId))
+                      IconButton(
+                        icon: const Icon(Icons.delete, color: Colors.red),
+                        onPressed: () async {
+                          try { await apiDelete('/jobs/${j['id']}'); setState(()=> _tick++); } catch(_){}
+                        },
+                      ),
                   ],
                 ) : null,
               );
             },
           );
         },
+      ))
+      ],
       ),
       floatingActionButton: (role=='admin' || role=='recruiter') ? FloatingActionButton(
-        onPressed: ()=> _createJobDialog(c),
+        onPressed: () async { final changed = await _createJobDialog(c); if (changed==true && mounted) setState(()=> _tick++); },
         child: const Icon(Icons.add),
       ) : null,
     );
   }
-  Future<void> _createJobDialog(BuildContext c) async {
+  Future<bool?> _createJobDialog(BuildContext c) async {
     final title=TextEditingController(); final dept=TextEditingController(); final loc=TextEditingController(); final desc=TextEditingController(); String? error;
+    final criteria = await fetchCriteria();
+    final Map<String, Map<String,dynamic>> reqs = { for(final cd in criteria) cd.key: { 'important': false, 'min': null } };
+    bool changed = false;
     await showDialog(context:c, builder:(_)=> StatefulBuilder(builder:(context,setState){
       return AlertDialog(
         title: const Text('Đăng tin tuyển dụng'),
@@ -197,20 +325,42 @@ class _JobsScreenState extends State<JobsScreen>{
           TextField(controller: dept, decoration: const InputDecoration(labelText:'Phòng ban')),
           TextField(controller: loc, decoration: const InputDecoration(labelText:'Địa điểm')),
           TextField(controller: desc, maxLines: 4, decoration: const InputDecoration(labelText:'Mô tả công việc')),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text('Yêu cầu điểm', style: Theme.of(context).textTheme.titleSmall)),
+          const SizedBox(height: 4),
+          ...criteria.map((cd){
+            final cfg = reqs[cd.key]!;
+            return Row(children:[
+              Expanded(child: Text(cd.label)),
+              Checkbox(value: (cfg['important'] as bool), onChanged: (v){ setState(()=> cfg['important'] = v==true); }),
+              SizedBox(width: 80, child: TextField(
+                decoration: const InputDecoration(hintText: 'min'), keyboardType: TextInputType.number,
+                onChanged: (t){ cfg['min'] = (t.trim().isEmpty? null : double.tryParse(t)); },
+              )),
+            ]);
+          }),
           if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
         ])),
         actions: [
           TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
           ElevatedButton(onPressed: () async { try{
-            await apiPost('/jobs', {'title': title.text, 'description': desc.text, 'department': dept.text.isEmpty? null:dept.text, 'location': loc.text.isEmpty? null:loc.text});
-            if (context.mounted) Navigator.pop(context); setState(()=> _tick++);
+            final scores = <String,dynamic>{};
+            reqs.forEach((k,v){ if (v['min']!=null) scores[k] = { 'min': v['min'], 'important': v['important']==true }; });
+            final requirements = scores.isEmpty? null : { 'scores': scores };
+            await apiPost('/jobs', {'title': title.text, 'description': desc.text, 'department': dept.text.isEmpty? null:dept.text, 'location': loc.text.isEmpty? null:loc.text, 'requirements': requirements});
+            changed = true; if (context.mounted) Navigator.pop(context);
           }catch(e){ setState(()=> error='Lưu thất bại'); }}, child: const Text('Lưu'))
         ],
       );
     }));
+    return changed;
   }
   Future<void> _editJobDialog(BuildContext c, Map<String,dynamic> job) async {
     final title=TextEditingController(text: job['title']?.toString()??''); final dept=TextEditingController(text: job['department']?.toString()??''); final loc=TextEditingController(text: job['location']?.toString()??''); final desc=TextEditingController(text: job['description']?.toString()??''); String? error;
+    final criteria = await fetchCriteria();
+    final existing = (job['requirements']?['scores'] ?? {}) as Map<String,dynamic>;
+    final Map<String, Map<String,dynamic>> reqs = { for(final cd in criteria) cd.key: { 'important': (existing[cd.key]?['important']??false) == true, 'min': (existing[cd.key]?['min']) } };
+    bool changed = false;
     await showDialog(context:c, builder:(_)=> StatefulBuilder(builder:(context,setState){
       return AlertDialog(
         title: const Text('Chỉnh sửa việc làm'),
@@ -219,39 +369,73 @@ class _JobsScreenState extends State<JobsScreen>{
           TextField(controller: dept, decoration: const InputDecoration(labelText:'Phòng ban')),
           TextField(controller: loc, decoration: const InputDecoration(labelText:'Địa điểm')),
           TextField(controller: desc, maxLines: 4, decoration: const InputDecoration(labelText:'Mô tả công việc')),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text('Yêu cầu điểm', style: Theme.of(context).textTheme.titleSmall)),
+          const SizedBox(height: 4),
+          ...criteria.map((cd){
+            final cfg = reqs[cd.key]!;
+            return Row(children:[
+              Expanded(child: Text(cd.label)),
+              Checkbox(value: (cfg['important'] as bool), onChanged: (v){ setState(()=> cfg['important'] = v==true); }),
+              SizedBox(width: 80, child: TextField(
+                controller: TextEditingController(text: (cfg['min']?.toString() ?? '')), keyboardType: TextInputType.number,
+                onChanged: (t){ cfg['min'] = (t.trim().isEmpty? null : double.tryParse(t)); },
+              )),
+            ]);
+          }),
           if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
         ])),
         actions: [
           TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
           ElevatedButton(onPressed: () async { try{
-            await apiPut('/jobs/${job['id']}', {'title': title.text, 'description': desc.text, 'department': dept.text.isEmpty? null:dept.text, 'location': loc.text.isEmpty? null:loc.text});
-            if (context.mounted) Navigator.pop(context); setState(()=> _tick++);
+            final scores = <String,dynamic>{}; reqs.forEach((k,v){ if (v['min']!=null) scores[k] = { 'min': v['min'], 'important': v['important']==true }; });
+            final requirements = scores.isEmpty? null : { 'scores': scores };
+            await apiPut('/jobs/${job['id']}', {'title': title.text, 'description': desc.text, 'department': dept.text.isEmpty? null:dept.text, 'location': loc.text.isEmpty? null:loc.text, 'requirements': requirements});
+            changed = true; if (context.mounted) Navigator.pop(context);
           }catch(e){ setState(()=> error='Lưu thất bại'); }}, child: const Text('Lưu'))
         ],
       );
     }));
+    if (changed && mounted) setState(()=> _tick++);
   }
 }
-class ProcessesScreen extends StatelessWidget { const ProcessesScreen({super.key}); @override Widget build(BuildContext c)=> _Scaffold(title:'Thiết lập quy trình'); }
-class ApplicationsScreen extends StatelessWidget { 
-  const ApplicationsScreen({super.key}); 
+class ProcessesScreen extends StatelessWidget {
+  const ProcessesScreen({super.key});
+  @override
+  Widget build(BuildContext c){
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Thiết lập quy trình'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> c.go('/processes'))],
+      ),
+      body: const Center(child: Text('Thiết lập quy trình - TODO xây UI và API')),
+    );
+  }
+}
+class ApplicationsScreen extends StatefulWidget { const ApplicationsScreen({super.key}); @override State<ApplicationsScreen> createState()=> _ApplicationsScreenState(); }
+class _ApplicationsScreenState extends State<ApplicationsScreen>{
+  int _tick=0;
   @override 
   Widget build(BuildContext c){
     final role = c.watch<AuthState>().role;
     final params = <String,dynamic>{};
     if (role != 'admin') params['mine'] = 'true';
     return Scaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')), title: const Text('Ứng tuyển của tôi')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Ứng tuyển của tôi'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
+      ),
       body: FutureBuilder<List<dynamic>>(
+        key: ValueKey(_tick),
         future: apiGetList('/applications', params: params),
         builder: (context, snap){
           if (snap.connectionState!=ConnectionState.done) return const Center(child: CircularProgressIndicator());
           if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
           var items = (snap.data ?? []).cast<Map<String,dynamic>>();
-          // Chỉ hiển thị ứng tuyển đang active cho thí sinh (submitted/screening/interviewed/offered)
           if (role == 'candidate') {
-            const active = {'submitted','screening','interviewed','offered'};
-            items = items.where((a) => active.contains((a['status']??'').toString())).toList();
+            // Show all, including rejected/offer for candidate history
           }
           return ListView.separated(
             itemCount: items.length,
@@ -259,21 +443,163 @@ class ApplicationsScreen extends StatelessWidget {
             itemBuilder: (_, i){
               final a = items[i];
               return ListTile(
-                title: Text(a['full_name']?.toString()??'No name'),
-                subtitle: Text('${a['email']??''} • Trạng thái: ${a['status']??''}'),
+                title: Text(a['job_title']?.toString()??'Công việc #${a['job_id']}'),
+                subtitle: Text('${a['full_name']??''} • ${a['email']??''} • Trạng thái: ${a['status']??''}'),
+                onTap: role=='candidate' ? ()=> c.go('/applications/${a['id']}') : null,
               );
             },
           );
         },
       ),
-      floatingActionButton: FloatingActionButton(
-        onPressed: (){},
-        child: const Icon(Icons.person_add_alt),
-      ),
     );
   }
 }
-class EvaluationsScreen extends StatelessWidget { const EvaluationsScreen({super.key}); @override Widget build(BuildContext c)=> _Scaffold(title:'Sàng lọc & Đánh giá'); }
+// class EvaluationsScreen placeholder removed; see stateful implementation below
+class EvaluationsScreen extends StatefulWidget { const EvaluationsScreen({super.key}); @override State<EvaluationsScreen> createState()=> _EvaluationsScreenState(); }
+class _EvaluationsScreenState extends State<EvaluationsScreen>{
+  int _tick=0; int? _selectedJobId; List<Map<String,dynamic>> _jobs=[]; List<Map<String,dynamic>> _results=[]; Map<String,dynamic>? _job; int _minPercent=0;
+  @override void initState(){ super.initState(); _loadJobs(); }
+  Future<void> _loadJobs() async {
+    final role = context.read<AuthState>().role; final params = role=='admin'? <String,dynamic>{} : {'mine':'true'};
+    final list = await apiGetList('/jobs', params: params);
+    setState(()=> _jobs = list.cast<Map<String,dynamic>>());
+  }
+  Future<void> _runScreening() async {
+    if (_selectedJobId==null) return;
+    final data = await apiGet('/evaluations/screening', params: {'job_id': _selectedJobId});
+    setState((){ _job = data['job'] as Map<String,dynamic>?; _results = (data['results']??[]).cast<Map<String,dynamic>>(); _tick++; });
+  }
+  int _calcPercent(Map<String,dynamic> r){
+    // Prefer server-provided percent if present
+    final p = r['percent'];
+    if (p is num) return p.toInt();
+    // Compute from candidate scores vs job requirements safely
+    final reqDyn = _job?['requirements']?['scores'];
+  final Map<String,dynamic> req = (reqDyn is Map) ? Map<String,dynamic>.from(reqDyn) : <String,dynamic>{};
+    if (req.isEmpty) return 0;
+    final scoresDyn = r['scores'];
+  final Map<String,dynamic> scores = (scoresDyn is Map) ? Map<String,dynamic>.from(scoresDyn) : <String,dynamic>{};
+    double sum = 0; int count = 0;
+    req.forEach((key, cfg){
+      final min = (cfg is Map && cfg['min'] is num) ? (cfg['min'] as num).toDouble() : null;
+      if (min == null || min <= 0) return;
+      final v = (scores[key] is num) ? (scores[key] as num).toDouble() : double.tryParse('${scores[key]??''}') ?? 0.0;
+      final ratio = (v <= 0) ? 0.0 : (v / min);
+      sum += ratio; // average of ratios as requested
+      count += 1;
+    });
+    if (count == 0) return 0;
+    return ((sum / count) * 100).round();
+  }
+  Future<void> _sendOfferFromResult(BuildContext c, Map<String,dynamic> r) async {
+    Map<String,dynamic>? app;
+    try{
+      final list = await apiGetList('/applications', params: {
+        if (_selectedJobId!=null) 'job_id': _selectedJobId,
+        'q': (r['email']??'').toString(),
+      });
+      if (list.isNotEmpty) app = (list.first as Map<String,dynamic>);
+    }catch(_){ }
+    if (app==null){
+      app = await showDialog<Map<String,dynamic>>(context: c, builder: (_)=> const _ApplicationPickerDialog());
+      if (app==null) return;
+    }
+    // Compose and send offer similar to MyCandidates
+    final defaultHtml = 'Xin chào ${app['full_name']},Chúng tôi trân trọng mời bạn vào vị trí ...';
+    DateTime? startDate;
+    final posCtrl = TextEditingController();
+    final salaryCtrl = TextEditingController();
+    final contentCtrl = TextEditingController(text: defaultHtml);
+    String? error;
+    await showDialog(context: c, builder: (_) => StatefulBuilder(builder: (context, setState){
+      return AlertDialog(
+        title: Text('Gửi thư mời cho ${app!['full_name']}'),
+        content: SingleChildScrollView(child: Column(children: [
+          Row(children:[
+            Expanded(child: OutlinedButton.icon(
+              onPressed: () async {
+                final now = DateTime.now();
+                final d = await showDatePicker(context: context, initialDate: startDate ?? now, firstDate: DateTime(now.year-3), lastDate: DateTime(now.year+3));
+                if (d!=null) setState(()=> startDate = d);
+              },
+              icon: const Icon(Icons.event),
+              label: Text(startDate==null? 'Chọn ngày bắt đầu' : '${startDate!.year.toString().padLeft(4,'0')}-${startDate!.month.toString().padLeft(2,'0')}-${startDate!.day.toString().padLeft(2,'0')}'),
+            ))
+          ]),
+          TextField(controller: posCtrl, decoration: const InputDecoration(labelText: 'Vị trí')),
+          TextField(controller: salaryCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Lương')),
+          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thư (HTML)')),
+          if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
+        ])),
+        actions: [
+          TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
+          ElevatedButton(onPressed: () async {
+            try{
+              final body = {
+                'application_id': app!['id'],
+                'start_date': startDate==null? '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2,'0')}-${DateTime.now().day.toString().padLeft(2,'0')}' : '${startDate!.year.toString().padLeft(4,'0')}-${startDate!.month.toString().padLeft(2,'0')}-${startDate!.day.toString().padLeft(2,'0')}',
+                'position': posCtrl.text.isNotEmpty? posCtrl.text : null,
+                'salary': salaryCtrl.text.isNotEmpty? double.tryParse(salaryCtrl.text) : null,
+                'content': contentCtrl.text.isNotEmpty? contentCtrl.text : null,
+              };
+              await apiPost('/offers', body);
+              if (context.mounted) Navigator.pop(context);
+            }catch(e){ setState(()=> error='Gửi thư thất bại'); }
+          }, child: const Text('Gửi')),
+        ],
+      );
+    }));
+  }
+  @override Widget build(BuildContext c){
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Sàng lọc & Đánh giá'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _runScreening)],
+      ),
+      body: Column(children:[
+        Padding(
+          padding: const EdgeInsets.all(8.0),
+          child: Row(children:[
+            Expanded(child: DropdownButtonFormField<int>(
+              value: _selectedJobId,
+              items: [const DropdownMenuItem<int>(value: null, child: Text('Chọn công việc')),
+                ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
+              ],
+              onChanged: (v){ setState(()=> _selectedJobId=v); },
+              decoration: const InputDecoration(labelText: 'Công việc'),
+            )),
+            const SizedBox(width: 8),
+            SizedBox(width: 160, child: DropdownButtonFormField<int>(
+              value: _minPercent,
+              decoration: const InputDecoration(labelText: 'Tối thiểu %'),
+              items: const [0,50,60,70,80,90,100].map((p)=> DropdownMenuItem<int>(value:p, child: Text('≥ $p%'))).toList(),
+              onChanged: (v){ if (v!=null) setState(()=> _minPercent=v); },
+            )),
+            const SizedBox(width: 8),
+            ElevatedButton(onPressed: _runScreening, child: const Text('Lọc tự động'))
+          ]),
+        ),
+        if (_job!=null) Padding(padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4), child: Align(alignment: Alignment.centerLeft, child: Text('Yêu cầu: '+_requirementsText(_job!), style: Theme.of(c).textTheme.bodySmall))),
+        Expanded(child: ListView.separated(
+          key: ValueKey(_tick),
+          itemCount: _results.where((r){ return _calcPercent(r) >= _minPercent; }).length,
+          separatorBuilder: (_, __)=> const Divider(height:1),
+          itemBuilder: (_, i){ final visible = _results.where((r){ return _calcPercent(r) >= _minPercent; }).toList(); final r = visible[i];
+            final pc = _calcPercent(r);
+            return ListTile(
+              leading: CircleAvatar(child: Text('$pc%')), 
+              title: Text(r['full_name']?.toString()??''),
+              subtitle: Text('${r['email']??''} • ${r['status']??''}'),
+              trailing: IconButton(icon: const Icon(Icons.mail_outline), tooltip: 'Gửi thư mời', onPressed: ()=> _sendOfferFromResult(c, r)),
+              onTap: (){ final id = r['application_id']; if (id is int) c.push('/applications/$id', extra: {'scores': r['scores'], 'email': r['email'], 'from':'/evaluations'}); },
+            );
+          },
+        ))
+      ]),
+    );
+  }
+}
 class InterviewsScreen extends StatefulWidget { const InterviewsScreen({super.key}); @override State<InterviewsScreen> createState()=> _InterviewsScreenState(); }
 class _InterviewsScreenState extends State<InterviewsScreen>{
   int _tick = 0;
@@ -282,7 +608,11 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
   Widget build(BuildContext c){
     final role = c.watch<AuthState>().role;
     return Scaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')), title: const Text('Lịch phỏng vấn')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Lịch phỏng vấn'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
+      ),
       body: FutureBuilder<List<dynamic>>(
         key: ValueKey(_tick),
         future: _load(c),
@@ -347,7 +677,7 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
           ]),
           TextField(controller: loc, decoration: const InputDecoration(labelText:'Địa điểm')),
           DropdownButtonFormField<String>(
-            value: mode,
+            initialValue: mode,
             decoration: const InputDecoration(labelText:'Hình thức'),
             items: const [
               DropdownMenuItem(value:'online', child: Text('online')),
@@ -402,7 +732,7 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
           ]),
           TextField(controller: loc, decoration: const InputDecoration(labelText:'Địa điểm')),
           DropdownButtonFormField<String>(
-            value: mode,
+            initialValue: mode,
             decoration: const InputDecoration(labelText:'Hình thức'),
             items: const [
               DropdownMenuItem(value:'online', child: Text('online')),
@@ -411,7 +741,7 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
             onChanged: (v){ if (v!=null) setState(()=> mode=v); },
           ),
           DropdownButtonFormField<String>(
-            value: status,
+            initialValue: status,
             decoration: const InputDecoration(labelText:'Trạng thái'),
             items: const [
               DropdownMenuItem(value:'scheduled', child: Text('scheduled')),
@@ -427,7 +757,7 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
           TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
           ElevatedButton(onPressed: () async { try{
             await apiPut('/interviews/${itv['id']}', {
-              'scheduled_at': scheduledAt==null? null : scheduledAt!.toIso8601String(),
+              'scheduled_at': scheduledAt?.toIso8601String(),
               'location': loc.text.trim().isEmpty? null:loc.text.trim(),
               'mode': mode,
               'status': status,
@@ -439,7 +769,20 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
     }));
   }
 }
-class CommitteesScreen extends StatelessWidget { const CommitteesScreen({super.key}); @override Widget build(BuildContext c)=> _Scaffold(title:'Hội đồng tuyển dụng'); }
+class CommitteesScreen extends StatelessWidget {
+  const CommitteesScreen({super.key});
+  @override
+  Widget build(BuildContext c){
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Hội đồng tuyển dụng'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> c.go('/committees'))],
+      ),
+      body: const Center(child: Text('Hội đồng tuyển dụng - TODO xây UI và API')),
+    );
+  }
+}
 class ResultsScreen extends StatefulWidget { const ResultsScreen({super.key}); @override State<ResultsScreen> createState()=> _ResultsScreenState(); }
 class _ResultsScreenState extends State<ResultsScreen>{
   final _search = TextEditingController();
@@ -461,16 +804,20 @@ class _ResultsScreenState extends State<ResultsScreen>{
     if (_search.text.isNotEmpty) p['q'] = _search.text;
     return p;
   }
-  @override
+        
   Widget build(BuildContext c){
     final role = c.watch<AuthState>().role;
     return Scaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')), title: const Text('Kết quả tuyển dụng')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Kết quả tuyển dụng'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
+      ),
       body: Column(children: [
         if (role=='admin' || role=='recruiter') Padding(
           padding: const EdgeInsets.all(8.0), child: Row(children: [
             Expanded(child: DropdownButtonFormField<int>(
-              value: _selectedJobId,
+              initialValue: _selectedJobId,
               items: [
                 const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
                 ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
@@ -535,7 +882,7 @@ class _ResultsScreenState extends State<ResultsScreen>{
             },
           ),
           DropdownButtonFormField<String>(
-            value: resultValue,
+            initialValue: resultValue,
             decoration: const InputDecoration(labelText: 'Kết quả'),
             items: const [
               DropdownMenuItem(value:'passed', child: Text('passed')),
@@ -576,7 +923,7 @@ class _ResultsScreenState extends State<ResultsScreen>{
         title: const Text('Cập nhật kết quả'),
         content: SingleChildScrollView(child: Column(children: [
           DropdownButtonFormField<String>(
-            value: resultValue,
+            initialValue: resultValue,
             decoration: const InputDecoration(labelText: 'Kết quả'),
             items: const [
               DropdownMenuItem(value:'passed', child: Text('passed')),
@@ -609,6 +956,7 @@ class _ResultsScreenState extends State<ResultsScreen>{
 }
 class OffersScreen extends StatefulWidget { const OffersScreen({super.key}); @override State<OffersScreen> createState()=> _OffersScreenState(); }
 class _OffersScreenState extends State<OffersScreen>{
+  int _tick = 0;
   Future<List<dynamic>> _load(BuildContext c){
     final role = c.read<AuthState>().role;
     return apiGetList('/offers', params: _buildParams(role));
@@ -635,6 +983,7 @@ class _OffersScreenState extends State<OffersScreen>{
       }
     }
   }
+
   Map<String,dynamic> _buildParams(String role){
     final m = <String,dynamic>{};
     if (role != 'admin') m['mine'] = 'true'; // recruiter: see offers sent by me or for my jobs; candidate: mine shows their own
@@ -648,8 +997,13 @@ class _OffersScreenState extends State<OffersScreen>{
   Widget build(BuildContext c){
     final role = c.watch<AuthState>().role;
     return Scaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')), title: const Text('Thư mời nhận việc')),
-      body: FutureBuilder<List<dynamic>>(
+        appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Thư mời nhận việc'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
+      ),
+        body: FutureBuilder<List<dynamic>>(
+        key: ValueKey(_tick),
         future: _load(c),
         builder: (context, snap){
           if (snap.connectionState!=ConnectionState.done) return const Center(child: CircularProgressIndicator());
@@ -661,7 +1015,7 @@ class _OffersScreenState extends State<OffersScreen>{
               padding: const EdgeInsets.all(8.0),
               child: Row(children: [
                 Expanded(child: DropdownButtonFormField<int>(
-                  value: _selectedJobId,
+                  initialValue: _selectedJobId,
                   items: [
                     const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
                     ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
@@ -671,7 +1025,7 @@ class _OffersScreenState extends State<OffersScreen>{
                 )),
                 if (role=='admin') const SizedBox(width: 8),
                 if (role=='admin') Expanded(child: DropdownButtonFormField<int>(
-                  value: _selectedSenderId,
+                  initialValue: _selectedSenderId,
                   items: [
                     const DropdownMenuItem<int>(value: null, child: Text('Tất cả người gửi')),
                     ..._senders.map((u)=> DropdownMenuItem<int>(value: u['id'] as int, child: Text('${u['full_name']} (${u['email']})')))
@@ -722,7 +1076,7 @@ class _OffersScreenState extends State<OffersScreen>{
 
   Future<void> _createOfferDialog(BuildContext c) async {
     await _offerFormDialog(c, null);
-    if (mounted) setState((){});
+    if (mounted) setState(()=> _tick++);
   }
 
   // Offers are immutable; no edit dialog
@@ -812,13 +1166,17 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
   @override
   Widget build(BuildContext c){
     return Scaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')), title: const Text('Ứng viên của tôi')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Ứng viên của tôi'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState((){}))],
+      ),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.all(8),
           child: Row(children: [
             Expanded(child: DropdownButtonFormField<int>(
-              value: _selectedJobId,
+              initialValue: _selectedJobId,
               items: [
                 const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
                 ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
@@ -856,7 +1214,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
   }
   Future<void> _composeOfferFromApp(BuildContext c, Map<String,dynamic> app) async {
     final defaultHtml = 'Xin chào ${app['full_name']},<br/>Chúng tôi trân trọng mời bạn vào vị trí ...';
-    final startCtrl = TextEditingController();
+    DateTime? startDate;
     final posCtrl = TextEditingController();
     final salaryCtrl = TextEditingController();
     final contentCtrl = TextEditingController(text: defaultHtml);
@@ -865,7 +1223,17 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
       return AlertDialog(
         title: Text('Gửi thư mời cho ${app['full_name']}'),
         content: SingleChildScrollView(child: Column(children: [
-          TextField(controller: startCtrl, decoration: const InputDecoration(labelText: 'Ngày bắt đầu (YYYY-MM-DD)')),
+          Row(children:[
+            Expanded(child: OutlinedButton.icon(
+              onPressed: () async {
+                final now = DateTime.now();
+                final d = await showDatePicker(context: context, initialDate: startDate ?? now, firstDate: DateTime(now.year-3), lastDate: DateTime(now.year+3));
+                if (d!=null) setState(()=> startDate = d);
+              },
+              icon: const Icon(Icons.event),
+              label: Text(startDate==null? 'Chọn ngày bắt đầu' : '${startDate!.year.toString().padLeft(4,'0')}-${startDate!.month.toString().padLeft(2,'0')}-${startDate!.day.toString().padLeft(2,'0')}'),
+            ))
+          ]),
           TextField(controller: posCtrl, decoration: const InputDecoration(labelText: 'Vị trí')),
           TextField(controller: salaryCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Lương')),
           TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thư (HTML)')),
@@ -877,7 +1245,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
             try{
               final body = {
                 'application_id': app['id'],
-                'start_date': startCtrl.text,
+                'start_date': startDate==null? '${DateTime.now().year}-${DateTime.now().month.toString().padLeft(2,'0')}-${DateTime.now().day.toString().padLeft(2,'0')}' : '${startDate!.year.toString().padLeft(4,'0')}-${startDate!.month.toString().padLeft(2,'0')}-${startDate!.day.toString().padLeft(2,'0')}',
                 'position': posCtrl.text.isEmpty? null : posCtrl.text,
                 'salary': salaryCtrl.text.isEmpty? null : double.tryParse(salaryCtrl.text),
                 'content': contentCtrl.text.isEmpty? null : contentCtrl.text,
@@ -889,6 +1257,156 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
         ],
       );
     }));
+  }
+}
+
+// Candidate: view application detail, job info and poster, with cancel button
+class ApplicationDetailScreen extends StatefulWidget {
+  final int appId; final Map<String,dynamic>? initialScores;
+  const ApplicationDetailScreen({super.key, required this.appId, this.initialScores});
+  @override State<ApplicationDetailScreen> createState()=> _ApplicationDetailScreenState();
+}
+class _ApplicationDetailScreenState extends State<ApplicationDetailScreen>{
+  Map<String,dynamic>? app; Map<String,dynamic>? job; Map<String,dynamic>? poster; Map<String,dynamic>? profile; bool loading=true; String? error; List<CriteriaDef> _criteria = const [];
+  Future<void> _load() async {
+    try{
+      // Load criteria for labeling score keys
+      try{ _criteria = await fetchCriteria(); } catch(_){ _criteria = const []; }
+      app = await apiGet('/applications/${widget.appId}');
+      if (app!=null){
+        job = await apiGet('/jobs/${app!['job_id']}');
+        final posterId = job?['posted_by'];
+        if (posterId!=null){
+          try{ poster = await apiGet('/users/$posterId/summary'); } catch(e){ /* May be restricted */ }
+        }
+        try{
+          final email = app!['email']?.toString();
+          if (email!=null && email.isNotEmpty){
+            profile = await apiGet('/profiles/by-email', params: {'email': email});
+          }
+        }catch(_){ /* ignore */ }
+      }
+    }catch(e){ error='Không tải được chi tiết ứng tuyển'; }
+    if (mounted) setState(()=> loading=false);
+  }
+  @override void initState(){ super.initState(); _load(); }
+  Future<void> _cancel() async {
+    final ok = await showDialog<bool>(context: context, builder: (dialogCtx)=> AlertDialog(
+      title: const Text('Hủy ứng tuyển'), content: const Text('Bạn có chắc muốn hủy ứng tuyển này?'),
+      actions: [TextButton(onPressed: ()=> Navigator.pop(dialogCtx, false), child: const Text('Không')), ElevatedButton(onPressed: ()=> Navigator.pop(dialogCtx, true), child: const Text('Hủy'))],
+    ));
+    if (ok!=true) return;
+    try{
+      await apiPut('/applications/${widget.appId}', {'status':'canceled'});
+    }catch(_){ try{ await apiDelete('/applications/${widget.appId}'); } catch(__){} }
+    if (!mounted) return; context.pop(); ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy ứng tuyển')));
+  }
+  @override
+  Widget build(BuildContext c){
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: (){
+          // Prefer popping back to Evaluations if we navigated from there; otherwise to Applications.
+          if (Navigator.of(c).canPop()) { c.pop(); return; }
+          final from = (widget.initialScores is Map<String,dynamic>) ? (widget.initialScores as Map<String,dynamic>)['from']?.toString() : null;
+          if (from == '/evaluations') { c.go('/evaluations'); } else { c.go('/applications'); }
+        }),
+        title: const Text('Chi tiết ứng tuyển'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
+      ),
+      body: loading? const Center(child:CircularProgressIndicator()) : error!=null? Center(child: Text(error!)) : Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+          if (job!=null) ...[
+            Text(job!['title']?.toString()??'', style: Theme.of(c).textTheme.titleLarge),
+            const SizedBox(height: 4),
+            Text(job!['department']?.toString()??''),
+            Text(job!['location']?.toString()??''),
+            const SizedBox(height: 8),
+            Text(job!['description']?.toString()??''),
+            const Divider(height: 24),
+          ],
+          if (poster!=null) ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.person_outline),
+            title: Text(poster!['full_name']?.toString()??''),
+            subtitle: Text(poster!['email']?.toString()??''),
+          ),
+          if (poster==null) Padding(padding: const EdgeInsets.only(bottom:8), child: Text('Không thể hiển thị thông tin người tuyển dụng (quyền hạn hạn chế)', style: Theme.of(c).textTheme.bodySmall)),
+          const SizedBox(height: 8),
+          if (app!=null) Card(child: Padding(
+            padding: const EdgeInsets.all(12),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
+              Text(app!['full_name']?.toString()??'', style: Theme.of(c).textTheme.titleMedium),
+              Text('${app!['email']??''} • Trạng thái: ${app!['status']??''}${job!=null ? '\nCông việc: ${job!['title']??''}' : ''}'),
+              if ((app!['phone']?.toString()??'').isNotEmpty) Padding(padding: const EdgeInsets.only(top:6), child: Text('SĐT: ${app!['phone']}')),
+              if ((app!['resume_url']?.toString()??'').isNotEmpty) Padding(padding: const EdgeInsets.only(top:6), child: Row(children:[
+                const Text('CV: '),
+                Expanded(child: Text(app!['resume_url']?.toString()??'', style: const TextStyle(decoration: TextDecoration.underline))),
+                IconButton(icon: const Icon(Icons.copy), tooltip:'Sao chép link', onPressed: ()=> Clipboard.setData(ClipboardData(text: app!['resume_url']?.toString()??'')))
+              ])),
+              if ((app!['cover_letter']?.toString()??'').isNotEmpty) Padding(padding: const EdgeInsets.only(top:6), child: Text('Thư ứng tuyển:\n${app!['cover_letter']}')),
+            ]),
+          )),
+          const SizedBox(height: 12),
+          // Candidate profile section
+          Align(alignment: Alignment.centerLeft, child: Text('Hồ sơ thí sinh', style: Theme.of(c).textTheme.titleMedium)),
+          const SizedBox(height: 6),
+          Builder(builder: (_){
+            final scoresDyn = profile?['scores'] ?? widget.initialScores?['scores'];
+            final Map<String,dynamic> scores = (scoresDyn is Map) ? Map<String,dynamic>.from(scoresDyn) : {};
+            final extra = (profile?['extra'] is Map) ? Map<String,dynamic>.from(profile!['extra']) : {};
+            if (scores.isEmpty && (extra['notes']==null)){
+              return const Text('Chưa có hồ sơ');
+            }
+            String _labelFor(String key){
+              try{ return _criteria.firstWhere((c)=> c.key==key).label; }catch(_){ return key; }
+            }
+            return Card(child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
+                if (scores.isNotEmpty) ...[
+                  Text('Điểm hồ sơ', style: Theme.of(c).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  ...scores.entries.map((e)=> Text('${_labelFor(e.key)}: ${e.value}')).toList(),
+                  const SizedBox(height: 8),
+                ],
+                if ((extra['notes']?.toString()??'').isNotEmpty) ...[
+                  Text('Ghi chú', style: Theme.of(c).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  Text(extra['notes'].toString()),
+                ],
+                if (extra['certificates'] is List && (extra['certificates'] as List).isNotEmpty) ...[
+                  const SizedBox(height: 8),
+                  Text('Chứng chỉ', style: Theme.of(c).textTheme.titleSmall),
+                  const SizedBox(height: 4),
+                  ...List<Map<String,dynamic>>.from(extra['certificates']).map((cert){
+                    final type = (cert['type']?.toString()??'').trim();
+                    final name = (cert['name']?.toString()??'').trim();
+                    final url  = (cert['url']?.toString()??'').trim();
+                    return Padding(
+                      padding: const EdgeInsets.only(bottom: 6),
+                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+                        Text('• ${name.isEmpty? '(Chưa đặt tên)' : name}${type.isEmpty? '' : ' (${type})'}'),
+                        if (url.isNotEmpty) Padding(
+                          padding: const EdgeInsets.only(left: 16, top: 2),
+                          child: Row(children:[
+                            Expanded(child: Text(url, style: const TextStyle(decoration: TextDecoration.underline))),
+                            IconButton(icon: const Icon(Icons.copy, size: 18), tooltip:'Sao chép link', onPressed: ()=> Clipboard.setData(ClipboardData(text: url)))
+                          ]),
+                        )
+                      ]),
+                    );
+                  }),
+                ],
+              ]),
+            ));
+          }),
+          const Spacer(),
+          Align(alignment: Alignment.centerRight, child: ElevatedButton.icon(onPressed: _cancel, icon: const Icon(Icons.cancel_outlined), label: const Text('Hủy ứng tuyển'))),
+        ]),
+      ),
+    );
   }
 }
 
@@ -936,7 +1454,7 @@ class _ApplicationPickerDialogState extends State<_ApplicationPickerDialog>{
       content: SizedBox(width: 520, child: Column(mainAxisSize: MainAxisSize.min, children:[
         Row(children:[
           Expanded(child: DropdownButtonFormField<int>(
-            value: _selectedJobId,
+            initialValue: _selectedJobId,
             items: [
               const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
               ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
@@ -988,7 +1506,27 @@ class _JobDetailScreenState extends State<JobDetailScreen>{
   final _cover=TextEditingController();
   @override void initState(){ super.initState(); _load(); }
   Future<void> _load() async {
-    try{ job = await apiGet('/jobs/${widget.jobId}'); }
+    try{ 
+      job = await apiGet('/jobs/${widget.jobId}');
+      // Prefill from logged-in user info
+      final me = context.read<AuthState>().user;
+      if (me!=null){
+        _name.text = me['full_name']?.toString() ?? _name.text;
+        _email.text = me['email']?.toString() ?? _email.text;
+      }
+      // Prefill from prior application for this job if exists
+      try{
+        final apps = await apiGetList('/applications', params: {'mine':'true', 'job_id': widget.jobId});
+        if (apps.isNotEmpty){
+          final a = (apps.first as Map<String,dynamic>);
+          _name.text = a['full_name']?.toString() ?? _name.text;
+          _email.text = a['email']?.toString() ?? _email.text;
+          _phone.text = a['phone']?.toString() ?? _phone.text;
+          _resume.text = a['resume_url']?.toString() ?? _resume.text;
+          _cover.text = a['cover_letter']?.toString() ?? _cover.text;
+        }
+      }catch(_){ /* ignore prefill errors */ }
+    }
     catch(e){ error='Không tải được công việc'; }
     setState(()=> loading=false);
   }
@@ -996,22 +1534,34 @@ class _JobDetailScreenState extends State<JobDetailScreen>{
   @override
   Widget build(BuildContext c){
     return Scaffold(
-      appBar: AppBar(title: Text(job!=null? job!['title']?.toString()??'Chi tiết công việc' : 'Chi tiết công việc')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: Text(job!=null? job!['title']?.toString()??'Chi tiết công việc' : 'Chi tiết công việc'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
+      ),
       body: loading? const Center(child: CircularProgressIndicator()) : error!=null? Center(child: Text(error!)) : SingleChildScrollView(
         padding: const EdgeInsets.all(16),
         child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
           Text(job!['title']?.toString()??'', style: Theme.of(c).textTheme.titleLarge),
           const SizedBox(height: 8),
           Text(job!['description']?.toString()??''),
+          if (job!['requirements']!=null) ...[
+            const SizedBox(height: 12),
+            Text('Yêu cầu', style: Theme.of(c).textTheme.titleMedium),
+            Text(_requirementsText(job!), style: Theme.of(c).textTheme.bodyMedium),
+          ],
           const Divider(height: 32),
-          Text('Nộp hồ sơ trực tuyến', style: Theme.of(c).textTheme.titleMedium),
-          TextField(controller: _name, decoration: const InputDecoration(labelText: 'Họ tên')),
-          TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
-          TextField(controller: _phone, decoration: const InputDecoration(labelText: 'Số điện thoại')),
-          TextField(controller: _resume, decoration: const InputDecoration(labelText: 'Link CV (Drive, v.v.)')),
-          TextField(controller: _cover, maxLines: 4, decoration: const InputDecoration(labelText: 'Thư ứng tuyển')),
-          const SizedBox(height: 12),
-          ElevatedButton(onPressed: () async {
+          if ((job!['status']?.toString() ?? 'open') == 'closed') ...[
+            Text('Công việc đã kết thúc, không thể nộp hồ sơ', style: TextStyle(color: Colors.red.shade700)),
+          ] else ...[
+            Text('Nộp hồ sơ trực tuyến', style: Theme.of(c).textTheme.titleMedium),
+            TextField(controller: _name, decoration: const InputDecoration(labelText: 'Họ tên')),
+            TextField(controller: _email, decoration: const InputDecoration(labelText: 'Email')),
+            TextField(controller: _phone, decoration: const InputDecoration(labelText: 'Số điện thoại')),
+            TextField(controller: _resume, decoration: const InputDecoration(labelText: 'Link CV (Drive, v.v.)')),
+            TextField(controller: _cover, maxLines: 4, decoration: const InputDecoration(labelText: 'Thư ứng tuyển')),
+            const SizedBox(height: 12),
+            ElevatedButton(onPressed: () async {
             try{
               final body = {
                 'job_id': widget.jobId,
@@ -1025,9 +1575,98 @@ class _JobDetailScreenState extends State<JobDetailScreen>{
               if (context.mounted) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Đã nộp hồ sơ')));
             }catch(e){ if (context.mounted) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Nộp hồ sơ thất bại'))); }
           }, child: const Text('Nộp hồ sơ'))
+          ]
         ]),
       ),
     );
+  }
+}
+String _requirementsText(Map<String,dynamic> job){
+  final scores = (job['requirements']?['scores']??{}) as Map<String,dynamic>;
+  if (scores.isEmpty) return 'Không có yêu cầu cụ thể';
+  // We don't have criteria labels here; fall back to showing keys as-is.
+  final parts = <String>[];
+  scores.forEach((k, v){ final min=v['min']; final imp=v['important']==true; final label=k; if (min!=null) parts.add('${imp?'* ':''}$label ≥ $min'); });
+  return parts.join(' • ');
+}
+
+// Admin screen to manage criteria list
+class CriteriaAdminScreen extends StatefulWidget { const CriteriaAdminScreen({super.key}); @override State<CriteriaAdminScreen> createState()=> _CriteriaAdminScreenState(); }
+class _CriteriaAdminScreenState extends State<CriteriaAdminScreen>{
+  int _tick=0; final _search=TextEditingController();
+  Future<List<dynamic>> _load() async { final list = await apiGetList('/criteria'); final q=_search.text.trim().toLowerCase(); if (q.isEmpty) return list; return list.where((e){ final m=(e as Map).map((k,v)=> MapEntry('$k','${v??''}'.toLowerCase())); return (m['key']??'').contains(q) || (m['label']??'').contains(q); }).toList(); }
+  @override void dispose(){ _search.dispose(); super.dispose(); }
+  @override Widget build(BuildContext c){
+    return Scaffold(
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Tiêu chí đánh giá'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
+      ),
+      body: Column(children:[
+        Padding(padding: const EdgeInsets.all(8), child: TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText:'Tìm theo key/label'), onSubmitted: (_)=> setState(()=> _tick++))),
+        Expanded(child: FutureBuilder<List<dynamic>>(
+          key: ValueKey(_tick), future: _load(), builder:(context,snap){
+            if (snap.connectionState!=ConnectionState.done) return const Center(child:CircularProgressIndicator());
+            if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
+            final items = (snap.data??[]).cast<Map<String,dynamic>>();
+            return ListView.separated(
+              itemCount: items.length,
+              separatorBuilder: (_, __)=> const Divider(height:1),
+              itemBuilder: (_, i){ final it=items[i]; return ListTile(
+                title: Text('${it['label']} • ${it['key']}'),
+                subtitle: Text('min:${it['min']} max:${it['max']} step:${it['step']} • active:${it['active']}'),
+                trailing: Row(mainAxisSize: MainAxisSize.min, children:[
+                  IconButton(icon: const Icon(Icons.edit), onPressed: () async { final changed = await _editDialog(context, it); if (changed==true && mounted) setState(()=> _tick++); }),
+                  IconButton(icon: const Icon(Icons.delete, color: Colors.red), onPressed: () async { try{ await apiDelete('/criteria/${it['id']}'); setState(()=> _tick++);} catch(_){}}),
+                ]),
+              ); },
+            );
+          })
+        )
+      ]),
+      floatingActionButton: FloatingActionButton(onPressed: () async { final changed = await _createDialog(context); if (changed==true && mounted) setState(()=> _tick++); }, child: const Icon(Icons.add)),
+    );
+  }
+  Future<bool?> _createDialog(BuildContext c) async {
+    final keyC=TextEditingController(); final labelC=TextEditingController(); final minC=TextEditingController(text:'0'); final maxC=TextEditingController(text:'100'); final stepC=TextEditingController(text:'1'); bool active=true; String? error;
+    bool changed=false;
+    await showDialog(context:c, builder:(_)=> StatefulBuilder(builder:(context,setState){ return AlertDialog(
+      title: const Text('Thêm tiêu chí'), content: SingleChildScrollView(child: Column(children:[
+        TextField(controller:keyC, decoration: const InputDecoration(labelText:'Key (ví dụ: ielts)')),
+        TextField(controller:labelC, decoration: const InputDecoration(labelText:'Nhãn hiển thị')),
+        Row(children:[ Expanded(child: TextField(controller:minC, decoration: const InputDecoration(labelText:'Min'), keyboardType: TextInputType.number)), const SizedBox(width:8), Expanded(child: TextField(controller:maxC, decoration: const InputDecoration(labelText:'Max'), keyboardType: TextInputType.number)) ]),
+        TextField(controller:stepC, decoration: const InputDecoration(labelText:'Bước'), keyboardType: TextInputType.number),
+        CheckboxListTile(value: active, onChanged: (v)=> setState(()=> active=v==true), title: const Text('Kích hoạt')),
+        if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
+      ])),
+      actions: [ TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
+        ElevatedButton(onPressed: () async { try{
+          await apiPost('/criteria', { 'key': keyC.text.trim(), 'label': labelC.text.trim(), 'min': double.tryParse(minC.text), 'max': double.tryParse(maxC.text), 'step': double.tryParse(stepC.text), 'active': active });
+          changed=true; if (context.mounted) Navigator.pop(context);
+        }catch(e){ setState(()=> error='Lưu thất bại'); } }, child: const Text('Lưu')) ],
+    ); }));
+    return changed;
+  }
+  Future<bool?> _editDialog(BuildContext c, Map<String,dynamic> it) async {
+    final keyC=TextEditingController(text: '${it['key']??''}'); final labelC=TextEditingController(text: '${it['label']??''}'); final minC=TextEditingController(text:'${it['min']??0}'); final maxC=TextEditingController(text:'${it['max']??100}'); final stepC=TextEditingController(text:'${it['step']??1}'); bool active=(it['active']==true); String? error;
+    bool changed=false;
+    await showDialog(context:c, builder:(_)=> StatefulBuilder(builder:(context,setState){ return AlertDialog(
+      title: const Text('Sửa tiêu chí'), content: SingleChildScrollView(child: Column(children:[
+        TextField(controller:keyC, decoration: const InputDecoration(labelText:'Key')),
+        TextField(controller:labelC, decoration: const InputDecoration(labelText:'Nhãn')),
+        Row(children:[ Expanded(child: TextField(controller:minC, decoration: const InputDecoration(labelText:'Min'), keyboardType: TextInputType.number)), const SizedBox(width:8), Expanded(child: TextField(controller:maxC, decoration: const InputDecoration(labelText:'Max'), keyboardType: TextInputType.number)) ]),
+        TextField(controller:stepC, decoration: const InputDecoration(labelText:'Bước'), keyboardType: TextInputType.number),
+        CheckboxListTile(value: active, onChanged: (v)=> setState(()=> active=v==true), title: const Text('Kích hoạt')),
+        if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
+      ])),
+      actions: [ TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
+        ElevatedButton(onPressed: () async { try{
+          await apiPut('/criteria/${it['id']}', { 'key': keyC.text.trim(), 'label': labelC.text.trim(), 'min': double.tryParse(minC.text), 'max': double.tryParse(maxC.text), 'step': double.tryParse(stepC.text), 'active': active });
+          changed=true; if (context.mounted) Navigator.pop(context);
+        }catch(e){ setState(()=> error='Lưu thất bại'); } }, child: const Text('Lưu')) ],
+    ); }));
+    return changed;
   }
 }
 class ReportsScreen extends StatefulWidget { const ReportsScreen({super.key}); @override State<ReportsScreen> createState()=> _ReportsScreenState(); }
@@ -1145,22 +1784,7 @@ class _Loading extends StatelessWidget{ const _Loading(); @override Widget build
 class _Empty extends StatelessWidget{ final String t; const _Empty(this.t); @override Widget build(BuildContext c)=> Padding(padding: const EdgeInsets.all(8), child: Text(t)); }
 class _Error extends StatelessWidget{ final String t; const _Error(this.t); @override Widget build(BuildContext c)=> Padding(padding: const EdgeInsets.all(8), child: Text('Lỗi: $t', style: const TextStyle(color: Colors.red))); }
 
-class _Scaffold extends StatelessWidget {
-  final String title;
-  const _Scaffold({required this.title});
-  @override
-  Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(title), leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> context.go('/')), actions: [
-        IconButton(icon: const Icon(Icons.home), onPressed: ()=> context.go('/')),
-        IconButton(icon: const Icon(Icons.logout), onPressed: ()=> context.read<AuthState>().logout())
-      ]),
-      body: Center(
-        child: Text('$title - TODO: build UI and call backend APIs'),
-      ),
-    );
-  }
-}
+// removed unused _Scaffold helper after replacing with concrete screens
 
 // Admin: User management
 class UsersScreen extends StatefulWidget { const UsersScreen({super.key}); @override State<UsersScreen> createState()=> _UsersScreenState(); }
@@ -1171,7 +1795,11 @@ class _UsersScreenState extends State<UsersScreen>{
   @override
   Widget build(BuildContext c){
     return Scaffold(
-      appBar: AppBar(leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')), title: const Text('Quản lý người dùng')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
+        title: const Text('Quản lý người dùng'),
+        actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
+      ),
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.all(8.0),
@@ -1218,7 +1846,7 @@ class _UsersScreenState extends State<UsersScreen>{
           TextField(controller: name, decoration: const InputDecoration(labelText:'Họ tên')),
           TextField(controller: email, decoration: const InputDecoration(labelText:'Email')),
           DropdownButtonFormField<String>(
-            value: role,
+            initialValue: role,
             decoration: const InputDecoration(labelText:'Vai trò'),
             items: const [
               DropdownMenuItem(value:'admin', child: Text('admin')),
@@ -1250,7 +1878,7 @@ class _UsersScreenState extends State<UsersScreen>{
           TextField(controller: name, decoration: const InputDecoration(labelText:'Họ tên')),
           TextField(controller: email, decoration: const InputDecoration(labelText:'Email')),
           DropdownButtonFormField<String>(
-            value: role,
+            initialValue: role,
             decoration: const InputDecoration(labelText:'Vai trò'),
             items: const [
               DropdownMenuItem(value:'admin', child: Text('admin')),

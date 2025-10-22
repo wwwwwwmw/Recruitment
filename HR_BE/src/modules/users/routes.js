@@ -5,6 +5,9 @@ import * as svc from './service.js';
 
 const router = Router();
 
+// Public summary (authenticated) so candidates can see poster name/email
+router.get('/:id/summary', [auth(), param('id').isInt()], svc.getSummary);
+
 // Admin-only access
 router.use(auth(), requireRoles('admin'));
 

@@ -54,11 +54,29 @@ export async function create(req, res, next) {
       'INSERT INTO offers (application_id, start_date, position, salary, content, sender_id) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
       [application_id, start_date, position || null, salary || null, content || null, senderId]
     );
-    const app = await getDb().query('SELECT email, full_name FROM applications WHERE id=$1', [application_id]);
+    const app = await getDb().query('SELECT email, full_name, job_id FROM applications WHERE id=$1', [application_id]);
+    if (app.rows[0]) {
+      // Auto-create a positive result when sending an offer
+      await getDb().query('INSERT INTO results(application_id, result, notes) VALUES($1,$2,$3)', [application_id, 'offer', 'Gửi thư mời nhận việc']);
+    }
     if (app.rows[0]) {
       const html = content || `Xin chào ${app.rows[0].full_name},<br/>Chúng tôi trân trọng mời bạn vào vị trí ${position || ''}. Ngày bắt đầu: ${start_date}.`;
       sendEmail({ to: app.rows[0].email, subject: 'Thư mời nhận việc', html }).catch(()=>{});
     }
+    // Notify recruiter poster of the job (best-effort)
+    try{
+      const job = await getDb().query('SELECT posted_by, title FROM jobs WHERE id=$1', [app.rows[0]?.job_id]);
+      const posterId = job.rows[0]?.posted_by;
+      if (posterId){
+        const poster = await getDb().query('SELECT email, full_name FROM users WHERE id=$1', [posterId]);
+        const to = poster.rows[0]?.email;
+        if (to){
+          const subject = 'Đã gửi thư offer';
+          const html = `Bạn đã gửi thư mời đến ${app.rows[0].full_name} cho công việc ${job.rows[0].title}.`;
+          sendEmail({ to, subject, html }).catch(()=>{});
+        }
+      }
+    }catch(_){ /* ignore */ }
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }
 }

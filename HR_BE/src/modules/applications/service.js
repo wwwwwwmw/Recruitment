@@ -6,14 +6,11 @@ export async function list(req, res, next) {
     const { job_id, q, mine } = req.query;
 
     // Base query and params
-    let sql = 'SELECT a.* FROM applications a';
+    let sql = 'SELECT a.*, j.title as job_title FROM applications a LEFT JOIN jobs j ON j.id=a.job_id';
     const params = [];
     const where = [];
 
-    // Optional join to jobs for recruiter scoping or job filter
-    if ((req.user && req.user.role === 'recruiter') || job_id) {
-      sql += ' JOIN jobs j ON j.id=a.job_id';
-    }
+    // Note: recruiter scoping uses the left-joined jobs table
 
     // Candidate: when mine=true, restrict to own email
     if (req.user && req.user.role === 'candidate' && mine === 'true') {
@@ -51,6 +48,12 @@ export async function list(req, res, next) {
 export async function create(req, res, next) {
   try {
     const { job_id, full_name, email, phone, resume_url, cover_letter } = req.body;
+    // Prevent applying to closed jobs
+    try { await getDb().query("ALTER TABLE jobs ADD COLUMN IF NOT EXISTS status TEXT DEFAULT 'open'"); } catch(_){ }
+    const jobQ = await getDb().query('SELECT status FROM jobs WHERE id=$1', [job_id]);
+    const job = jobQ.rows[0];
+    if (!job) return res.status(404).json({ message: 'Job not found' });
+    if ((job.status || 'open') === 'closed') return res.status(400).json({ message: 'Công việc đã kết thúc, không thể nộp hồ sơ' });
     const { rows } = await getDb().query(
       'INSERT INTO applications (job_id, full_name, email, phone, resume_url, cover_letter) VALUES ($1,$2,$3,$4,$5,$6) RETURNING *',
       [job_id, full_name, email, phone || null, resume_url || null, cover_letter || null]

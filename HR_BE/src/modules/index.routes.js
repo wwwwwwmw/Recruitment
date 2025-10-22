@@ -10,6 +10,8 @@ import offersRoutes from './offers/routes.js';
 import reportsRoutes from './reports/routes.js';
 import authRoutes from './auth/routes.js';
 import usersRoutes from './users/routes.js';
+import profilesRoutes from './profiles/routes.js';
+import criteriaRoutes from './criteria/routes.js';
 import { auth, requireRoles } from '../middleware/auth.js';
 
 const router = Router();
@@ -28,6 +30,9 @@ router.use('/results', auth(), resultsRoutes);
 // Offers: allow any authenticated user to access. Route file will restrict writes to admin/recruiter.
 router.use('/offers', auth(), offersRoutes);
 router.use('/reports', auth(), requireRoles('admin','recruiter'), reportsRoutes);
-router.use('/users', auth(), requireRoles('admin'), usersRoutes);
+// Users: route file handles per-endpoint auth (summary open to any authenticated user, rest admin-only)
+router.use('/users', usersRoutes);
+router.use('/profiles', profilesRoutes);
+router.use('/criteria', criteriaRoutes);
 
 export default router;

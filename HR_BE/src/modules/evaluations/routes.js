@@ -6,6 +6,7 @@ const router = Router();
 
 // Screening and evaluation
 router.get('/', svc.list);
+router.get('/screening', svc.screening);
 router.post('/', [
   body('application_id').isInt(),
   body('stage_id').optional().isInt(),
