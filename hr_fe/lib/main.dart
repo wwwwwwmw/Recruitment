@@ -1354,7 +1354,20 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen>{
         try{
           final email = app!['email']?.toString();
           if (email!=null && email.isNotEmpty){
-            profile = await apiGet('/profiles/by-email', params: {'email': email});
+            final role = context.read<AuthState>().role;
+            final meEmail = context.read<AuthState>().user?['email']?.toString();
+            if (role == 'candidate' && meEmail!=null && meEmail.toLowerCase() == email.toLowerCase()){
+              // Candidate viewing their own application: use /profiles/me to avoid 403
+              try{
+                profile = await apiGet('/profiles/me');
+              }catch(_){
+                // Fallback to by-email if server allows; ignore errors otherwise
+                try{ profile = await apiGet('/profiles/by-email', params: {'email': email}); }catch(__){}
+              }
+            } else {
+              // Recruiter/Admin or different email: use by-email endpoint
+              profile = await apiGet('/profiles/by-email', params: {'email': email});
+            }
           }
         }catch(_){ /* ignore */ }
       }
@@ -1386,98 +1399,233 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen>{
         title: const Text('Chi tiết ứng tuyển'),
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: _load)],
       ),
-      body: loading? const Center(child:CircularProgressIndicator()) : error!=null? Center(child: Text(error!)) : Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-          if (job!=null) ...[
-            Text(job!['title']?.toString()??'', style: Theme.of(c).textTheme.titleLarge),
-            const SizedBox(height: 4),
-            Text(job!['department']?.toString()??''),
-            Text(job!['location']?.toString()??''),
-            const SizedBox(height: 8),
-            Text(job!['description']?.toString()??''),
-            const Divider(height: 24),
-          ],
-          if (poster!=null) ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.person_outline),
-            title: Text(poster!['full_name']?.toString()??''),
-            subtitle: Text(poster!['email']?.toString()??''),
+      body: loading
+    ? const Center(child: CircularProgressIndicator())
+    : error != null
+        ? Center(child: Text(error!))
+        : Padding(
+            padding: const EdgeInsets.all(16),
+            child: SingleChildScrollView( // 👈 Thêm phần này
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  if (job != null) ...[
+                    Text(job!['title']?.toString() ?? '',
+                        style: Theme.of(c).textTheme.titleLarge),
+                    const SizedBox(height: 4),
+                    Text(job!['department']?.toString() ?? ''),
+                    Text(job!['location']?.toString() ?? ''),
+                    const SizedBox(height: 8),
+                    Text(job!['description']?.toString() ?? ''),
+                    const Divider(height: 24),
+                  ],
+                  if (poster != null)
+                    ListTile(
+                      contentPadding: EdgeInsets.zero,
+                      leading: const Icon(Icons.person_outline),
+                      title: Text(poster!['full_name']?.toString() ?? ''),
+                      subtitle: Text(poster!['email']?.toString() ?? ''),
+                    ),
+                  if (poster == null)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Text(
+                        'Không thể hiển thị thông tin người tuyển dụng (quyền hạn hạn chế)',
+                        style: Theme.of(c).textTheme.bodySmall,
+                      ),
+                    ),
+                  const SizedBox(height: 8),
+                  if (app != null)
+                    Card(
+                      child: Padding(
+                        padding: const EdgeInsets.all(12),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(app!['full_name']?.toString() ?? '',
+                                style: Theme.of(c).textTheme.titleMedium),
+                            Text(
+                                '${app!['email'] ?? ''} • Trạng thái: ${app!['status'] ?? ''}${job != null ? '\nCông việc: ${job!['title'] ?? ''}' : ''}'),
+                            if ((app!['phone']?.toString() ?? '').isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text('SĐT: ${app!['phone']}'),
+                              ),
+                            if ((app!['resume_url']?.toString() ?? '')
+                                .isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Row(
+                                  children: [
+                                    const Text('CV: '),
+                                    Expanded(
+                                      child: Text(
+                                        app!['resume_url']?.toString() ?? '',
+                                        style: const TextStyle(
+                                            decoration:
+                                                TextDecoration.underline),
+                                      ),
+                                    ),
+                                    IconButton(
+                                        icon: const Icon(Icons.copy),
+                                        tooltip: 'Sao chép link',
+                                        onPressed: () => Clipboard.setData(
+                                            ClipboardData(
+                                                text: app!['resume_url']
+                                                        ?.toString() ??
+                                                    '')))
+                                  ],
+                                ),
+                              ),
+                            if ((app!['cover_letter']?.toString() ?? '')
+                                .isNotEmpty)
+                              Padding(
+                                padding: const EdgeInsets.only(top: 6),
+                                child: Text(
+                                    'Thư ứng tuyển:\n${app!['cover_letter']}'),
+                              ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  const SizedBox(height: 12),
+                  Align(
+                      alignment: Alignment.centerLeft,
+                      child: Text('Hồ sơ thí sinh',
+                          style: Theme.of(c).textTheme.titleMedium)),
+                  const SizedBox(height: 6),
+                  Builder(
+                    builder: (_) {
+                      final scoresDyn =
+                          profile?['scores'] ?? widget.initialScores?['scores'];
+                      final Map<String, dynamic> scores =
+                          (scoresDyn is Map)
+                              ? Map<String, dynamic>.from(scoresDyn)
+                              : {};
+                      final extra = (profile?['extra'] is Map)
+                          ? Map<String, dynamic>.from(profile!['extra'])
+                          : {};
+                      if (scores.isEmpty && (extra['notes'] == null)) {
+                        return const Text('Chưa có hồ sơ');
+                      }
+
+                      String _labelFor(String key) {
+                        try {
+                          return _criteria
+                              .firstWhere((c) => c.key == key)
+                              .label;
+                        } catch (_) {
+                          return key;
+                        }
+                      }
+
+                      return Card(
+                        child: Padding(
+                          padding: const EdgeInsets.all(12),
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              if (scores.isNotEmpty) ...[
+                                Text('Điểm hồ sơ',
+                                    style:
+                                        Theme.of(c).textTheme.titleSmall),
+                                const SizedBox(height: 4),
+                                ...scores.entries
+                                    .map((e) => Text(
+                                        '${_labelFor(e.key)}: ${e.value}'))
+                                    .toList(),
+                                const SizedBox(height: 8),
+                              ],
+                              if ((extra['notes']?.toString() ?? '')
+                                  .isNotEmpty) ...[
+                                Text('Ghi chú',
+                                    style:
+                                        Theme.of(c).textTheme.titleSmall),
+                                const SizedBox(height: 4),
+                                Text(extra['notes'].toString()),
+                              ],
+                              if (extra['certificates'] is List &&
+                                  (extra['certificates'] as List)
+                                      .isNotEmpty) ...[
+                                const SizedBox(height: 8),
+                                Text('Chứng chỉ',
+                                    style:
+                                        Theme.of(c).textTheme.titleSmall),
+                                const SizedBox(height: 4),
+                                ...List<Map<String, dynamic>>.from(
+                                        extra['certificates'])
+                                    .map((cert) {
+                                  final type =
+                                      (cert['type']?.toString() ?? '')
+                                          .trim();
+                                  final name =
+                                      (cert['name']?.toString() ?? '')
+                                          .trim();
+                                  final url =
+                                      (cert['url']?.toString() ?? '')
+                                          .trim();
+                                  return Padding(
+                                    padding:
+                                        const EdgeInsets.only(bottom: 6),
+                                    child: Column(
+                                      crossAxisAlignment:
+                                          CrossAxisAlignment.start,
+                                      children: [
+                                        Text(
+                                            '• ${name.isEmpty ? '(Chưa đặt tên)' : name}${type.isEmpty ? '' : ' ($type)'}'),
+                                        if (url.isNotEmpty)
+                                          Padding(
+                                            padding:
+                                                const EdgeInsets.only(
+                                                    left: 16, top: 2),
+                                            child: Row(
+                                              children: [
+                                                Expanded(
+                                                  child: Text(url,
+                                                      style: const TextStyle(
+                                                          decoration:
+                                                              TextDecoration
+                                                                  .underline)),
+                                                ),
+                                                IconButton(
+                                                  icon: const Icon(
+                                                      Icons.copy,
+                                                      size: 18),
+                                                  tooltip:
+                                                      'Sao chép link',
+                                                  onPressed: () =>
+                                                      Clipboard.setData(
+                                                          ClipboardData(
+                                                              text: url)),
+                                                ),
+                                              ],
+                                            ),
+                                          ),
+                                      ],
+                                    ),
+                                  );
+                                }),
+                              ],
+                            ],
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                  const SizedBox(height: 16),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: ElevatedButton.icon(
+                      onPressed: _cancel,
+                      icon: const Icon(Icons.cancel_outlined),
+                      label: const Text('Hủy ứng tuyển'),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           ),
-          if (poster==null) Padding(padding: const EdgeInsets.only(bottom:8), child: Text('Không thể hiển thị thông tin người tuyển dụng (quyền hạn hạn chế)', style: Theme.of(c).textTheme.bodySmall)),
-          const SizedBox(height: 8),
-          if (app!=null) Card(child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
-              Text(app!['full_name']?.toString()??'', style: Theme.of(c).textTheme.titleMedium),
-              Text('${app!['email']??''} • Trạng thái: ${app!['status']??''}${job!=null ? '\nCông việc: ${job!['title']??''}' : ''}'),
-              if ((app!['phone']?.toString()??'').isNotEmpty) Padding(padding: const EdgeInsets.only(top:6), child: Text('SĐT: ${app!['phone']}')),
-              if ((app!['resume_url']?.toString()??'').isNotEmpty) Padding(padding: const EdgeInsets.only(top:6), child: Row(children:[
-                const Text('CV: '),
-                Expanded(child: Text(app!['resume_url']?.toString()??'', style: const TextStyle(decoration: TextDecoration.underline))),
-                IconButton(icon: const Icon(Icons.copy), tooltip:'Sao chép link', onPressed: ()=> Clipboard.setData(ClipboardData(text: app!['resume_url']?.toString()??'')))
-              ])),
-              if ((app!['cover_letter']?.toString()??'').isNotEmpty) Padding(padding: const EdgeInsets.only(top:6), child: Text('Thư ứng tuyển:\n${app!['cover_letter']}')),
-            ]),
-          )),
-          const SizedBox(height: 12),
-          // Candidate profile section
-          Align(alignment: Alignment.centerLeft, child: Text('Hồ sơ thí sinh', style: Theme.of(c).textTheme.titleMedium)),
-          const SizedBox(height: 6),
-          Builder(builder: (_){
-            final scoresDyn = profile?['scores'] ?? widget.initialScores?['scores'];
-            final Map<String,dynamic> scores = (scoresDyn is Map) ? Map<String,dynamic>.from(scoresDyn) : {};
-            final extra = (profile?['extra'] is Map) ? Map<String,dynamic>.from(profile!['extra']) : {};
-            if (scores.isEmpty && (extra['notes']==null)){
-              return const Text('Chưa có hồ sơ');
-            }
-            String _labelFor(String key){
-              try{ return _criteria.firstWhere((c)=> c.key==key).label; }catch(_){ return key; }
-            }
-            return Card(child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Column(crossAxisAlignment: CrossAxisAlignment.start, children:[
-                if (scores.isNotEmpty) ...[
-                  Text('Điểm hồ sơ', style: Theme.of(c).textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  ...scores.entries.map((e)=> Text('${_labelFor(e.key)}: ${e.value}')).toList(),
-                  const SizedBox(height: 8),
-                ],
-                if ((extra['notes']?.toString()??'').isNotEmpty) ...[
-                  Text('Ghi chú', style: Theme.of(c).textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  Text(extra['notes'].toString()),
-                ],
-                if (extra['certificates'] is List && (extra['certificates'] as List).isNotEmpty) ...[
-                  const SizedBox(height: 8),
-                  Text('Chứng chỉ', style: Theme.of(c).textTheme.titleSmall),
-                  const SizedBox(height: 4),
-                  ...List<Map<String,dynamic>>.from(extra['certificates']).map((cert){
-                    final type = (cert['type']?.toString()??'').trim();
-                    final name = (cert['name']?.toString()??'').trim();
-                    final url  = (cert['url']?.toString()??'').trim();
-                    return Padding(
-                      padding: const EdgeInsets.only(bottom: 6),
-                      child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
-                        Text('• ${name.isEmpty? '(Chưa đặt tên)' : name}${type.isEmpty? '' : ' (${type})'}'),
-                        if (url.isNotEmpty) Padding(
-                          padding: const EdgeInsets.only(left: 16, top: 2),
-                          child: Row(children:[
-                            Expanded(child: Text(url, style: const TextStyle(decoration: TextDecoration.underline))),
-                            IconButton(icon: const Icon(Icons.copy, size: 18), tooltip:'Sao chép link', onPressed: ()=> Clipboard.setData(ClipboardData(text: url)))
-                          ]),
-                        )
-                      ]),
-                    );
-                  }),
-                ],
-              ]),
-            ));
-          }),
-          const Spacer(),
-          Align(alignment: Alignment.centerRight, child: ElevatedButton.icon(onPressed: _cancel, icon: const Icon(Icons.cancel_outlined), label: const Text('Hủy ứng tuyển'))),
-        ]),
-      ),
+
     );
   }
 }
