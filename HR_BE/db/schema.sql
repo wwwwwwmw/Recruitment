@@ -103,3 +103,21 @@ CREATE TABLE IF NOT EXISTS offers (
   created_at TIMESTAMP DEFAULT now(),
   updated_at TIMESTAMP DEFAULT now()
 );
+
+-- Upgrades / safe alterations
+-- Link jobs to the poster (recruiter/admin) and optionally to a process
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS posted_by INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE jobs ADD COLUMN IF NOT EXISTS process_id INT REFERENCES processes(id) ON DELETE SET NULL;
+
+-- Store the full letter content for offers
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS content TEXT;
+-- Track who sent the offer (recruiter/admin)
+ALTER TABLE offers ADD COLUMN IF NOT EXISTS sender_id INT REFERENCES users(id) ON DELETE SET NULL;
+
+-- Ensure stage order uniqueness within a process
+CREATE UNIQUE INDEX IF NOT EXISTS idx_stages_unique_order ON stages(process_id, stage_order);
+
+-- Helpful indexes
+CREATE INDEX IF NOT EXISTS idx_jobs_posted_by ON jobs(posted_by);
+CREATE INDEX IF NOT EXISTS idx_applications_job_id ON applications(job_id);
+CREATE INDEX IF NOT EXISTS idx_offers_application_id ON offers(application_id);
