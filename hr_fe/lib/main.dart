@@ -41,7 +41,7 @@ class HRApp extends StatelessWidget {
             GoRoute(path: '/applications', builder: (_, __) => const ApplicationsScreen()),
             GoRoute(path: '/applications/:id', builder: (ctx, state) => ApplicationDetailScreen(
               appId: int.parse(state.pathParameters['id']!),
-              initialScores: state.extra is Map<String,dynamic>? ? state.extra as Map<String,dynamic>? : null,
+              initialScores: state.extra is Map<String,dynamic> ? state.extra as Map<String,dynamic> : null,
             )),
             GoRoute(path: '/evaluations', builder: (_, __) => const EvaluationsScreen()),
             GoRoute(path: '/interviews', builder: (_, __) => const InterviewsScreen()),
@@ -505,7 +505,7 @@ class _EvaluationsScreenState extends State<EvaluationsScreen>{
       if (app==null) return;
     }
     // Compose and send offer similar to MyCandidates
-    final defaultHtml = 'Xin chào ${app['full_name']},Chúng tôi trân trọng mời bạn vào vị trí ...';
+  final defaultHtml = 'Xin chào ${app['full_name']},<br/>Thông báo từ bộ phận tuyển dụng...';
     DateTime? startDate;
     final posCtrl = TextEditingController();
     final salaryCtrl = TextEditingController();
@@ -513,7 +513,7 @@ class _EvaluationsScreenState extends State<EvaluationsScreen>{
     String? error;
     await showDialog(context: c, builder: (_) => StatefulBuilder(builder: (context, setState){
       return AlertDialog(
-        title: Text('Gửi thư mời cho ${app!['full_name']}'),
+        title: Text('Gửi thông báo cho ${app!['full_name']}'),
         content: SingleChildScrollView(child: Column(children: [
           Row(children:[
             Expanded(child: OutlinedButton.icon(
@@ -528,7 +528,7 @@ class _EvaluationsScreenState extends State<EvaluationsScreen>{
           ]),
           TextField(controller: posCtrl, decoration: const InputDecoration(labelText: 'Vị trí')),
           TextField(controller: salaryCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Lương')),
-          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thư (HTML)')),
+          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thông báo (HTML)')),
           if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
         ])),
         actions: [
@@ -561,17 +561,17 @@ class _EvaluationsScreenState extends State<EvaluationsScreen>{
         Padding(
           padding: const EdgeInsets.all(8.0),
           child: Row(children:[
-            Expanded(child: DropdownButtonFormField<int>(
-              value: _selectedJobId,
+            Expanded(child: DropdownButtonFormField<int?>(
+              initialValue: _selectedJobId,
               items: [const DropdownMenuItem<int>(value: null, child: Text('Chọn công việc')),
-                ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
+                ..._jobs.map((j)=> DropdownMenuItem<int?>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
               ],
               onChanged: (v){ setState(()=> _selectedJobId=v); },
               decoration: const InputDecoration(labelText: 'Công việc'),
             )),
             const SizedBox(width: 8),
             SizedBox(width: 160, child: DropdownButtonFormField<int>(
-              value: _minPercent,
+              initialValue: _minPercent,
               decoration: const InputDecoration(labelText: 'Tối thiểu %'),
               items: const [0,50,60,70,80,90,100].map((p)=> DropdownMenuItem<int>(value:p, child: Text('≥ $p%'))).toList(),
               onChanged: (v){ if (v!=null) setState(()=> _minPercent=v); },
@@ -591,7 +591,7 @@ class _EvaluationsScreenState extends State<EvaluationsScreen>{
               leading: CircleAvatar(child: Text('$pc%')), 
               title: Text(r['full_name']?.toString()??''),
               subtitle: Text('${r['email']??''} • ${r['status']??''}'),
-              trailing: IconButton(icon: const Icon(Icons.mail_outline), tooltip: 'Gửi thư mời', onPressed: ()=> _sendOfferFromResult(c, r)),
+              trailing: IconButton(icon: const Icon(Icons.mail_outline), tooltip: 'Gửi thông báo', onPressed: ()=> _sendOfferFromResult(c, r)),
               onTap: (){ final id = r['application_id']; if (id is int) c.push('/applications/$id', extra: {'scores': r['scores'], 'email': r['email'], 'from':'/evaluations'}); },
             );
           },
@@ -603,7 +603,46 @@ class _EvaluationsScreenState extends State<EvaluationsScreen>{
 class InterviewsScreen extends StatefulWidget { const InterviewsScreen({super.key}); @override State<InterviewsScreen> createState()=> _InterviewsScreenState(); }
 class _InterviewsScreenState extends State<InterviewsScreen>{
   int _tick = 0;
-  Future<List<dynamic>> _load(BuildContext c) => apiGetList('/interviews');
+  Future<List<dynamic>> _load(BuildContext c) async {
+    final role = c.read<AuthState>().role;
+    final me = c.read<AuthState>().user ?? {};
+    final meId = me['id'];
+    final myEmail = (me['email']?.toString() ?? '').toLowerCase();
+
+    final params = <String,dynamic>{};
+    if (role != 'admin') params['mine'] = 'true';
+    final raw = await apiGetList('/interviews', params: params);
+    final items = raw.cast<Map<String,dynamic>>();
+
+    if (role == 'admin') return items;
+
+    // Additional client-side filtering to enforce visibility even if server ignores params
+    final filtered = <Map<String,dynamic>>[];
+    for (final itv in items){
+      final appId = itv['application_id'];
+      if (appId is! int) continue;
+      try{
+        final app = await apiGet('/applications/$appId');
+        // Candidate: only interviews for their own application email
+        if (role == 'candidate'){
+          final email = (app['email']?.toString() ?? '').toLowerCase();
+          if (email.isNotEmpty && email == myEmail) filtered.add(itv);
+          continue;
+        }
+        // Recruiter: only interviews for jobs they own (posted_by == meId)
+        if (role == 'recruiter'){
+          final jobId = app['job_id'];
+          if (jobId is int){
+            try{
+              final job = await apiGet('/jobs/$jobId');
+              if (job['posted_by'] == meId) filtered.add(itv);
+            }catch(_){ /* ignore job fetch errors */ }
+          }
+        }
+      }catch(_){ /* ignore app fetch errors */ }
+    }
+    return filtered;
+  }
   @override
   Widget build(BuildContext c){
     final role = c.watch<AuthState>().role;
@@ -699,6 +738,18 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
                 'location': loc.text.trim().isEmpty? null:loc.text.trim(),
                 'mode': mode,
               });
+              // Gửi thông báo mời phỏng vấn đến thí sinh (dùng cơ chế thông báo hiện có)
+              final dateOnly = '${when.year.toString().padLeft(4,'0')}-${when.month.toString().padLeft(2,'0')}-${when.day.toString().padLeft(2,'0')}';
+              final content = 'Kính gửi ${selectedApp!['full_name']},<br/>Bạn được mời tham gia phỏng vấn vào lúc ${when.toLocal().toIso8601String()} (${mode}).<br/>Địa điểm: ${loc.text.trim().isEmpty? '(sẽ cập nhật)' : loc.text.trim()}.';
+              try{
+                await apiPost('/offers', {
+                  'application_id': selectedApp!['id'],
+                  'start_date': dateOnly,
+                  'position': 'Phỏng vấn',
+                  'salary': null,
+                  'content': content,
+                });
+              }catch(_){ /* ignore notification errors */ }
               if (context.mounted) Navigator.pop(context);
             }catch(e){ setState(()=> error='Lưu thất bại'); }
           }, child: const Text('Lưu'))
@@ -957,9 +1008,26 @@ class _ResultsScreenState extends State<ResultsScreen>{
 class OffersScreen extends StatefulWidget { const OffersScreen({super.key}); @override State<OffersScreen> createState()=> _OffersScreenState(); }
 class _OffersScreenState extends State<OffersScreen>{
   int _tick = 0;
-  Future<List<dynamic>> _load(BuildContext c){
+  Future<List<dynamic>> _load(BuildContext c) async {
     final role = c.read<AuthState>().role;
-    return apiGetList('/offers', params: _buildParams(role));
+    final items = await apiGetList('/offers', params: _buildParams(role));
+    if (role == 'candidate'){
+      // Candidate sees: all interview invitations; other notifications only if they passed/got offer/accepted/hired
+      try{
+        final results = await apiGetList('/results', params: {'mine':'true'});
+        final allowed = results.where((r){
+          final v = (r['result']?.toString() ?? '').toLowerCase();
+          return v=='passed' || v=='offer' || v=='accepted' || v=='hired';
+        }).map<int?>((r)=> r['application_id'] as int?).whereType<int>().toSet();
+        return items.where((o){
+          final pos = (o['position']?.toString() ?? '');
+          if (pos.toLowerCase()=='phỏng vấn' || pos.toLowerCase()=='phong van') return true; // interview invites always visible
+          final appId = o['application_id'];
+          return appId is int && allowed.contains(appId);
+        }).toList();
+      }catch(_){ return items; }
+    }
+    return items;
   }
   final _search = TextEditingController();
   int? _selectedJobId;
@@ -999,7 +1067,7 @@ class _OffersScreenState extends State<OffersScreen>{
     return Scaffold(
         appBar: AppBar(
         leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/')),
-        title: const Text('Thư mời nhận việc'),
+        title: const Text('Thông báo'),
         actions: [IconButton(icon: const Icon(Icons.refresh), onPressed: ()=> setState(()=> _tick++))],
       ),
         body: FutureBuilder<List<dynamic>>(
@@ -1009,33 +1077,37 @@ class _OffersScreenState extends State<OffersScreen>{
           if (snap.connectionState!=ConnectionState.done) return const Center(child: CircularProgressIndicator());
           if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
           final items = snap.data ?? [];
-          if (items.isEmpty) return const Center(child: Text('Chưa có thư mời'));
+          if (items.isEmpty) return const Center(child: Text('Chưa có thông báo'));
           return Column(children: [
             if (role=='admin' || role=='recruiter') Padding(
               padding: const EdgeInsets.all(8.0),
-              child: Row(children: [
-                Expanded(child: DropdownButtonFormField<int>(
-                  initialValue: _selectedJobId,
-                  items: [
-                    const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
-                    ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
-                  ],
-                  onChanged: (v){ setState(()=> _selectedJobId = v); },
-                  decoration: const InputDecoration(labelText: 'Lọc theo công việc'),
-                )),
-                if (role=='admin') const SizedBox(width: 8),
-                if (role=='admin') Expanded(child: DropdownButtonFormField<int>(
-                  initialValue: _selectedSenderId,
-                  items: [
-                    const DropdownMenuItem<int>(value: null, child: Text('Tất cả người gửi')),
-                    ..._senders.map((u)=> DropdownMenuItem<int>(value: u['id'] as int, child: Text('${u['full_name']} (${u['email']})')))
-                  ],
-                  onChanged: (v){ setState(()=> _selectedSenderId = v); },
-                  decoration: const InputDecoration(labelText: 'Lọc theo người gửi'),
-                )),
-                const SizedBox(width: 8),
-                Expanded(child: TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm theo tên hoặc email'), onSubmitted: (_)=> setState((){}))),
-              ]),
+              child: LayoutBuilder(builder: (context, constraints){
+                final isNarrow = constraints.maxWidth < 720;
+                final cols = (role=='admin') ? 3 : 2;
+                final gap = 8.0;
+                final fieldWidth = isNarrow ? constraints.maxWidth : (constraints.maxWidth - gap*(cols-1)) / cols;
+                return Wrap(spacing: gap, runSpacing: gap, children: [
+                  SizedBox(width: fieldWidth, child: DropdownButtonFormField<int>(
+                    initialValue: _selectedJobId,
+                    items: [
+                      const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
+                      ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
+                    ],
+                    onChanged: (v){ setState(()=> _selectedJobId = v); },
+                    decoration: const InputDecoration(labelText: 'Lọc theo công việc'),
+                  )),
+                  if (role=='admin') SizedBox(width: fieldWidth, child: DropdownButtonFormField<int>(
+                    initialValue: _selectedSenderId,
+                    items: [
+                      const DropdownMenuItem<int>(value: null, child: Text('Tất cả người gửi')),
+                      ..._senders.map((u)=> DropdownMenuItem<int>(value: u['id'] as int, child: Text('${u['full_name']} (${u['email']})')))
+                    ],
+                    onChanged: (v){ setState(()=> _selectedSenderId = v); },
+                    decoration: const InputDecoration(labelText: 'Lọc theo người gửi'),
+                  )),
+                  SizedBox(width: fieldWidth, child: TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm theo tên hoặc email'), onSubmitted: (_)=> setState((){}))),
+                ]);
+              })
             ),
             Expanded(child: ListView.separated(
             itemCount: items.length,
@@ -1062,7 +1134,7 @@ class _OffersScreenState extends State<OffersScreen>{
 
   Future<void> _viewOfferDialog(BuildContext c, Map<String,dynamic> o) async {
     await showDialog(context: c, builder: (_) => AlertDialog(
-      title: const Text('Chi tiết thư mời'),
+      title: const Text('Chi tiết thông báo'),
       content: SingleChildScrollView(child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Text('Vị trí: ${o['position']??''}'),
         Text('Ngày bắt đầu: ${o['start_date']??''}'),
@@ -1090,7 +1162,7 @@ class _OffersScreenState extends State<OffersScreen>{
     String? error;
     await showDialog(context: c, builder: (_) => StatefulBuilder(builder: (context, setState){
       return AlertDialog(
-        title: Text(offer==null? 'Tạo thư mời' : 'Cập nhật thư mời'),
+        title: Text(offer==null? 'Tạo thông báo' : 'Cập nhật thông báo'),
         content: SingleChildScrollView(child: Column(children: [
           if (offer==null) _AppPickerTile(
             selectedLabel: selectedApp==null? 'Chọn ứng tuyển' : '#${selectedApp!['id']} • ${selectedApp!['full_name']} • ${selectedApp!['email']}',
@@ -1112,7 +1184,7 @@ class _OffersScreenState extends State<OffersScreen>{
           ]),
           TextField(controller: posCtrl, decoration: const InputDecoration(labelText: 'Vị trí')),
           TextField(controller: salaryCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Lương')),
-          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thư (HTML)')),
+          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thông báo (HTML)')),
           if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
         ])),
         actions: [
@@ -1203,7 +1275,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
                 return ListTile(
                   title: Text(a['full_name']?.toString()??''),
                   subtitle: Text('${a['email']??''} • Trạng thái: ${a['status']??''}'),
-                  trailing: IconButton(icon: const Icon(Icons.mail_outline), onPressed: ()=> _composeOfferFromApp(context, a)),
+                  trailing: IconButton(icon: const Icon(Icons.mail_outline), tooltip: 'Gửi thông báo', onPressed: ()=> _composeOfferFromApp(context, a)),
                 );
               },
             );
@@ -1213,7 +1285,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
     );
   }
   Future<void> _composeOfferFromApp(BuildContext c, Map<String,dynamic> app) async {
-    final defaultHtml = 'Xin chào ${app['full_name']},<br/>Chúng tôi trân trọng mời bạn vào vị trí ...';
+  final defaultHtml = 'Xin chào ${app['full_name']},<br/>Thông báo từ bộ phận tuyển dụng...';
     DateTime? startDate;
     final posCtrl = TextEditingController();
     final salaryCtrl = TextEditingController();
@@ -1221,7 +1293,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
     String? error;
     await showDialog(context: c, builder: (_) => StatefulBuilder(builder: (context, setState){
       return AlertDialog(
-        title: Text('Gửi thư mời cho ${app['full_name']}'),
+  title: Text('Gửi thông báo cho ${app['full_name']}'),
         content: SingleChildScrollView(child: Column(children: [
           Row(children:[
             Expanded(child: OutlinedButton.icon(
@@ -1236,7 +1308,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
           ]),
           TextField(controller: posCtrl, decoration: const InputDecoration(labelText: 'Vị trí')),
           TextField(controller: salaryCtrl, keyboardType: TextInputType.number, decoration: const InputDecoration(labelText: 'Lương')),
-          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thư (HTML)')),
+          TextField(controller: contentCtrl, maxLines: 6, decoration: const InputDecoration(labelText: 'Nội dung thông báo (HTML)')),
           if (error!=null) Padding(padding: const EdgeInsets.only(top:8), child: Text(error!, style: const TextStyle(color: Colors.red)))
         ])),
         actions: [
