@@ -17,3 +17,21 @@ router.post('/', [
 router.get('/:id', [param('id').isInt()], svc.getById);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Đánh giá
+ *     description: Các endpoint liên quan tới việc đánh giá hồ sơ và sàng lọc
+ */
+
+/**
+ * @openapi
+ * /api/evaluations:
+ *   get:
+ *     tags: [Đánh giá]
+ *     summary: Lấy danh sách đánh giá
+ *   post:
+ *     tags: [Đánh giá]
+ *     summary: Tạo đánh giá mới (admin/recruiter)
+ */

@@ -4,6 +4,8 @@ import cors from 'cors';
 import dotenv from 'dotenv';
 import { errorHandler, notFound } from './middleware/error.js';
 import apiRouter from './modules/index.routes.js';
+import swaggerUi from 'swagger-ui-express';
+import swaggerSpec from './swagger.js';
 
 dotenv.config();
 
@@ -20,6 +22,10 @@ if (process.env.NODE_ENV !== 'production') {
 app.get('/health', (req, res) => {
   res.json({ status: 'ok', env: process.env.NODE_ENV || 'development' });
 });
+
+// Swagger UI and JSON
+app.use('/api-docs', swaggerUi.serve, swaggerUi.setup(swaggerSpec));
+app.get('/api-docs.json', (req, res) => res.json(swaggerSpec));
 
 app.use('/api', apiRouter);
 

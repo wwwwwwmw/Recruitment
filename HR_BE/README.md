@@ -42,6 +42,8 @@ npm run dev
 5. Kiểm tra:
 - GET http://localhost:4000/health
 - Dùng Postman import `HR_API_Collection.postman_collection.json`
+ - Swagger UI: http://localhost:4000/api-docs
+
 
 ## Ghi chú
 - Ứng dụng khởi động được dù chưa có DB, nhưng các endpoint truy vấn DB sẽ lỗi nếu `DATABASE_URL` không cấu hình.

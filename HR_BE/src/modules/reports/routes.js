@@ -10,3 +10,18 @@ router.get('/outcomes', svc.outcomes);
 router.get('/outcome-detail', svc.outcomeDetail);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Báo cáo
+ *     description: Các báo cáo thống kê liên quan đến tuyển dụng
+ */
+
+/**
+ * @openapi
+ * /api/reports/summary:
+ *   get:
+ *     tags: [Báo cáo]
+ *     summary: Báo cáo tổng quan
+ */

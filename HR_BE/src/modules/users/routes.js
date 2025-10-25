@@ -8,6 +8,49 @@ const router = Router();
 // Public summary (authenticated) so candidates can see poster name/email
 router.get('/:id/summary', [auth(), param('id').isInt()], svc.getSummary);
 
+/**
+ * @openapi
+ * tags:
+ *   - name: Người dùng
+ *     description: Quản lý người dùng (admin)
+ */
+
+/**
+ * @openapi
+ * /api/users:
+ *   get:
+ *     tags: [Người dùng]
+ *     summary: Lấy danh sách người dùng (admin)
+ *     responses:
+ *       '200':
+ *         description: Thành công
+ *   post:
+ *     tags: [Người dùng]
+ *     summary: Tạo người dùng mới (admin)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               full_name:
+ *                 type: string
+ *                 description: Họ và tên
+ *               email:
+ *                 type: string
+ *                 description: Email
+ *               role:
+ *                 type: string
+ *                 description: Vai trò (admin/recruiter/...)
+ *               password:
+ *                 type: string
+ *                 description: Mật khẩu
+ *     responses:
+ *       '201':
+ *         description: Tạo thành công
+ */
+
 // Admin-only access
 router.use(auth(), requireRoles('admin'));
 

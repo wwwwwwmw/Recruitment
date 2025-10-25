@@ -30,3 +30,21 @@ router.delete('/:id', [
 ], removeById);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Tiêu chí
+ *     description: Quản lý các tiêu chí chấm điểm/đánh giá
+ */
+
+/**
+ * @openapi
+ * /api/criteria:
+ *   get:
+ *     tags: [Tiêu chí]
+ *     summary: Lấy danh sách tiêu chí
+ *   post:
+ *     tags: [Tiêu chí]
+ *     summary: Tạo tiêu chí mới (admin)
+ */

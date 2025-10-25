@@ -13,3 +13,20 @@ router.put('/me', auth(), putMine);
 router.get('/by-email', [auth(), query('email').isEmail()], getByEmail);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Hồ sơ ứng viên
+ *     description: Thông tin hồ sơ ứng viên (self-service và admin truy vấn)
+ */
+
+/**
+ * @openapi
+ * /api/profiles/me:
+ *   get:
+ *     tags: [Hồ sơ ứng viên]
+ *     summary: Lấy hồ sơ của người dùng hiện tại
+ *     security:
+ *       - bearerAuth: []
+ */

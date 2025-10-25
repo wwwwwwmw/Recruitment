@@ -24,5 +24,6 @@ async function applySchemaIfNeeded(){
 applySchemaIfNeeded().finally(() => {
   app.listen(port, () => {
     console.log(`HR recruitment backend listening on port ${port}`);
+    console.log(`Swagger UI available at http://localhost:${port}/api-docs`);
   });
 });

@@ -26,3 +26,21 @@ router.put('/:id', [
 router.delete('/:id', [param('id').isInt(), requireRoles('admin','recruiter')], svc.removeById);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Thư mời nhận việc
+ *     description: Quản lý thư mời nhận việc
+ */
+
+/**
+ * @openapi
+ * /api/offers:
+ *   get:
+ *     tags: [Thư mời nhận việc]
+ *     summary: Lấy danh sách thư mời
+ *   post:
+ *     tags: [Thư mời nhận việc]
+ *     summary: Tạo thư mời mới (admin/recruiter)
+ */

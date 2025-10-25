@@ -7,6 +7,45 @@ const router = Router();
 
 // Parse JWT if present so list can honor mine=true for recruiters
 router.get('/', auth(false), jobs.list);
+/**
+ * @openapi
+ * tags:
+ *   - name: Công việc
+ *     description: Các vị trí tuyển dụng
+ */
+
+/**
+ * @openapi
+ * /api/jobs:
+ *   get:
+ *     tags: [Công việc]
+ *     summary: Lấy danh sách công việc (công khai)
+ *     responses:
+ *       '200':
+ *         description: Thành công
+ *   post:
+ *     tags: [Công việc]
+ *     summary: Tạo công việc mới (admin/recruiter)
+ *     requestBody:
+ *       required: true
+ *       content:
+ *         application/json:
+ *           schema:
+ *             type: object
+ *             properties:
+ *               title:
+ *                 type: string
+ *                 description: Tiêu đề công việc
+ *               slug:
+ *                 type: string
+ *                 description: Đoạn đường dẫn (tùy chọn)
+ *               description:
+ *                 type: string
+ *                 description: Mô tả công việc
+ *     responses:
+ *       '201':
+ *         description: Tạo thành công
+ */
 router.post('/', [
   body('title').isString().notEmpty(),
   body('slug').optional().isString(),

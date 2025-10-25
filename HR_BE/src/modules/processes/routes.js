@@ -16,3 +16,21 @@ router.put('/:id', [param('id').isInt()], svc.updateById);
 router.delete('/:id', [param('id').isInt()], svc.removeById);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Quy trình
+ *     description: Định nghĩa các quy trình tuyển dụng và các stage
+ */
+
+/**
+ * @openapi
+ * /api/processes:
+ *   get:
+ *     tags: [Quy trình]
+ *     summary: Lấy danh sách quy trình tuyển dụng
+ *   post:
+ *     tags: [Quy trình]
+ *     summary: Tạo quy trình mới
+ */

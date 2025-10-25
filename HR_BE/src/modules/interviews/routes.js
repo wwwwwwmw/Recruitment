@@ -24,3 +24,21 @@ router.patch('/:id', [param('id').isInt(), requireRoles('admin','recruiter')], s
 router.delete('/:id', [param('id').isInt(), requireRoles('admin','recruiter')], svc.removeById);
 
 export default router;
+
+/**
+ * @openapi
+ * tags:
+ *   - name: Phỏng vấn
+ *     description: Lịch phỏng vấn và quản lý buổi phỏng vấn
+ */
+
+/**
+ * @openapi
+ * /api/interviews:
+ *   get:
+ *     tags: [Phỏng vấn]
+ *     summary: Lấy lịch phỏng vấn
+ *   post:
+ *     tags: [Phỏng vấn]
+ *     summary: Tạo lịch phỏng vấn mới (admin/recruiter)
+ */
