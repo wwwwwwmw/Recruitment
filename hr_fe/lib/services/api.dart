@@ -72,6 +72,21 @@ Future<Map<String, dynamic>> apiPut(String path, Map<String, dynamic> body) asyn
   throw Exception('PUT $path failed: ${res.statusCode} ${res.body}');
 }
 
+Future<Map<String, dynamic>> apiPatch(String path, Map<String, dynamic> body) async {
+  final res = await http.patch(Uri.parse('$apiBaseUrl$path'),
+      headers: {
+        'Content-Type': 'application/json',
+        if (_authToken != null) 'Authorization': 'Bearer $_authToken',
+      },
+      body: jsonEncode(body));
+  if (res.statusCode >= 200 && res.statusCode < 300) {
+    final b = jsonDecode(res.body);
+    if (b is Map<String, dynamic>) return b;
+    return {'result': b};
+  }
+  throw Exception('PATCH $path failed: ${res.statusCode} ${res.body}');
+}
+
 Future<bool> apiDelete(String path) async {
   final res = await http.delete(Uri.parse('$apiBaseUrl$path'), headers: {
     if (_authToken != null) 'Authorization': 'Bearer $_authToken',

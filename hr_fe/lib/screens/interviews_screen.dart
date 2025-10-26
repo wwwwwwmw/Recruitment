@@ -217,7 +217,7 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
         actions: [
           TextButton(onPressed: ()=> Navigator.pop(context), child: const Text('Hủy')),
           ElevatedButton(onPressed: () async { try{
-            await apiPut('/interviews/${itv['id']}', {
+            await apiPatch('/interviews/${itv['id']}', {
               'scheduled_at': scheduledAt?.toIso8601String(),
               'location': loc.text.trim().isEmpty? null:loc.text.trim(),
               'mode': mode,

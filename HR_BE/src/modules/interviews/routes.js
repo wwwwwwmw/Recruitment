@@ -20,7 +20,9 @@ router.post('/', [
 ], svc.create);
 
 router.get('/:id', [param('id').isInt()], svc.getById);
+// Support both PATCH and PUT for update (frontend may use either)
 router.patch('/:id', [param('id').isInt(), requireRoles('admin','recruiter')], svc.updateById);
+router.put('/:id', [param('id').isInt(), requireRoles('admin','recruiter')], svc.updateById);
 router.delete('/:id', [param('id').isInt(), requireRoles('admin','recruiter')], svc.removeById);
 
 export default router;
