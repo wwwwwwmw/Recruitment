@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/criteria.dart';
 import '../services/api.dart';
 import '../services/auth_state.dart';
+import '../services/notifications_state.dart';
 import '../widgets/resume_view.dart';
 
 class ApplicationDetailScreen extends StatefulWidget {
@@ -52,6 +53,7 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
         try {
           final email = app!['email']?.toString();
           if (email != null && email.isNotEmpty) {
+            if (!mounted) return; // avoid using context after async gaps
             final role = context.read<AuthState>().role;
             final meEmail = context.read<AuthState>().user?['email']?.toString();
             if (role == 'candidate' && meEmail != null && meEmail.toLowerCase() == email.toLowerCase()) {
@@ -100,6 +102,129 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy ứng tuyển')));
   }
 
+  Future<void> _rejectCandidate() async {
+    String notes = '';
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('Loại ứng viên'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Text('Bạn có chắc muốn loại ứng viên này?'),
+            const SizedBox(height: 8),
+            TextField(
+              decoration: const InputDecoration(labelText: 'Ghi chú (tuỳ chọn)'),
+              onChanged: (v) => notes = v,
+              maxLines: 3,
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Không')),
+          ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Xác nhận')),
+        ],
+      ),
+    );
+    if (ok != true) return;
+    try {
+      await apiPost('/results', {
+        'application_id': widget.appId,
+        'result': 'rejected',
+        if (notes.trim().isNotEmpty) 'notes': notes.trim(),
+      });
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã loại ứng viên')));
+      // Refresh notifications so unread badge updates quickly
+      try { context.read<NotificationsState>().fetch(); } catch (_) {}
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi khi loại ứng viên: $e')));
+    }
+  }
+
+  Future<void> _sendOffer() async {
+    DateTime startDate = DateTime.now();
+    final positionCtrl = TextEditingController(text: job?['title']?.toString() ?? '');
+    final salaryCtrl = TextEditingController();
+    final contentCtrl = TextEditingController(
+      text: 'Xin chào ${app?['full_name'] ?? ''},\nChúng tôi trân trọng mời bạn vào vị trí ${job?['title'] ?? ''}.',
+    );
+
+    final ok = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => StatefulBuilder(
+        builder: (ctx, setState) => AlertDialog(
+          title: const Text('Gửi thư offer'),
+          content: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                TextField(
+                  controller: positionCtrl,
+                  decoration: const InputDecoration(labelText: 'Vị trí (tuỳ chọn)'),
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: salaryCtrl,
+                  decoration: const InputDecoration(labelText: 'Mức lương (tuỳ chọn)'),
+                  keyboardType: TextInputType.number,
+                ),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    Expanded(child: Text('Ngày bắt đầu: ${startDate.toIso8601String().substring(0, 10)}')),
+                    TextButton(
+                      onPressed: () async {
+                        final picked = await showDatePicker(
+                          context: ctx,
+                          initialDate: startDate,
+                          firstDate: DateTime.now(),
+                          lastDate: DateTime.now().add(const Duration(days: 365 * 2)),
+                        );
+                        if (picked != null) setState(() => startDate = picked);
+                      },
+                      child: const Text('Chọn ngày'),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                TextField(
+                  controller: contentCtrl,
+                  decoration: const InputDecoration(labelText: 'Nội dung (tuỳ chọn)'),
+                  maxLines: 5,
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(onPressed: () => Navigator.pop(ctx, false), child: const Text('Huỷ')),
+            ElevatedButton(onPressed: () => Navigator.pop(ctx, true), child: const Text('Gửi')),
+          ],
+        ),
+      ),
+    );
+
+    if (ok != true) return;
+    try {
+      final body = {
+        'application_id': widget.appId,
+        'start_date': startDate.toIso8601String().substring(0, 10),
+        if (positionCtrl.text.trim().isNotEmpty) 'position': positionCtrl.text.trim(),
+        if (salaryCtrl.text.trim().isNotEmpty) 'salary': double.tryParse(salaryCtrl.text.trim()),
+        if (contentCtrl.text.trim().isNotEmpty) 'content': contentCtrl.text.trim(),
+      };
+      await apiPost('/offers', body);
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã gửi thư offer')));
+      // Refresh notifications so unread badge updates quickly
+      try { context.read<NotificationsState>().fetch(); } catch (_) {}
+    } catch (e) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Lỗi khi gửi offer: $e')));
+    }
+  }
+
   // no-op: label resolver removed after switching to ResumeView
 
   @override
@@ -113,9 +238,7 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
               c.pop();
               return;
             }
-            final from = (widget.initialScores is Map<String, dynamic>)
-                ? (widget.initialScores as Map<String, dynamic>)['from']?.toString()
-                : null;
+      final from = widget.initialScores?['from']?.toString();
             if (from == '/evaluations') {
               c.go('/evaluations');
             } else {
@@ -230,13 +353,40 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
       bottomNavigationBar: SafeArea(
         child: Padding(
           padding: const EdgeInsets.fromLTRB(16, 8, 16, 16),
-          child: SizedBox(
-            width: double.infinity,
-            child: ElevatedButton.icon(
-              onPressed: _cancel,
-              icon: const Icon(Icons.cancel_outlined),
-              label: const Text('Hủy ứng tuyển'),
-            ),
+          child: Builder(
+            builder: (ctx) {
+              final role = context.watch<AuthState>().role;
+              if (role == 'recruiter' || role == 'admin') {
+                return Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton.icon(
+                        onPressed: _rejectCandidate,
+                        icon: const Icon(Icons.block),
+                        label: const Text('Loại ứng viên'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton.icon(
+                        onPressed: _sendOffer,
+                        icon: const Icon(Icons.mark_email_unread_outlined),
+                        label: const Text('Gửi thư offer'),
+                      ),
+                    ),
+                  ],
+                );
+              }
+              // Candidate view: show cancel application
+              return SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: _cancel,
+                  icon: const Icon(Icons.cancel_outlined),
+                  label: const Text('Hủy ứng tuyển'),
+                ),
+              );
+            },
           ),
         ),
       ),

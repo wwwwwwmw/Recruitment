@@ -1,5 +1,7 @@
 String requirementsText(Map<String, dynamic> job) {
-  final scores = (job['requirements']?['scores'] ?? {}) as Map<String, dynamic>;
+  final req = job['requirements'];
+  final rawScores = (req is Map) ? req['scores'] : null;
+  final Map<String, dynamic> scores = (rawScores is Map) ? Map<String, dynamic>.from(rawScores) : <String, dynamic>{};
   if (scores.isEmpty) return 'Không có yêu cầu cụ thể';
   final parts = <String>[];
   scores.forEach((k, v) {

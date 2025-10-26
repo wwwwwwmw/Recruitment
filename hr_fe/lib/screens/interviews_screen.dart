@@ -159,18 +159,7 @@ class _InterviewsScreenState extends State<InterviewsScreen>{
                 'location': loc.text.trim().isEmpty? null:loc.text.trim(),
                 'mode': mode,
               });
-              // Gửi thông báo mời phỏng vấn đến thí sinh (dùng cơ chế thông báo hiện có)
-              final dateOnly = '${when.year.toString().padLeft(4,'0')}-${when.month.toString().padLeft(2,'0')}-${when.day.toString().padLeft(2,'0')}';
-              final content = 'Kính gửi ${selectedApp!['full_name']},<br/>Bạn được mời tham gia phỏng vấn vào lúc ${when.toLocal().toIso8601String()} (${mode}).<br/>Địa điểm: ${loc.text.trim().isEmpty? '(sẽ cập nhật)' : loc.text.trim()}.';
-              try{
-                await apiPost('/offers', {
-                  'application_id': selectedApp!['id'],
-                  'start_date': dateOnly,
-                  'position': 'Phỏng vấn',
-                  'salary': null,
-                  'content': content,
-                });
-              }catch(_){ /* ignore notification errors */ }
+              // Không tự động tạo offer; backend đã tạo thông báo phỏng vấn
               if (context.mounted) Navigator.pop(context);
             }catch(e){ setState(()=> error='Lưu thất bại'); }
           }, child: const Text('Lưu'))

@@ -35,8 +35,8 @@ Future<Map<String, dynamic>> apiGet(String path, {Map<String, dynamic>? params})
   });
   if (res.statusCode >= 200 && res.statusCode < 300) {
     final body = jsonDecode(res.body);
-    if (body is Map<String, dynamic>) return body;
-    if (body is List && body.isNotEmpty && body.first is Map<String, dynamic>) return body.first as Map<String, dynamic>;
+  if (body is Map<String, dynamic>) return body;
+  if (body is List && body.isNotEmpty && body.first is Map) return Map<String, dynamic>.from(body.first as Map);
     return {'result': body};
   }
   throw Exception('GET $path failed: ${res.statusCode}');

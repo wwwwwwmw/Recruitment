@@ -33,28 +33,39 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
     try {
       final me = await apiGet('/profiles/me');
       final crit = await fetchCriteria();
-      setState(() => _criteria = crit);
+      // Prepare controllers first, then rebuild once with all state
+      final Map<String, TextEditingController> newCtrls = {};
       for (final c in crit) {
-        _ctrl[c.key] = TextEditingController();
+        newCtrls[c.key] = TextEditingController();
       }
-      final scores = (me['scores'] ?? {}) as Map<String, dynamic>;
+  final scoresDyn = me['scores'];
+  final Map<String, dynamic> scores = (scoresDyn is Map) ? Map<String, dynamic>.from(scoresDyn) : <String, dynamic>{};
       for (final c in crit) {
         final v = scores[c.key];
-        if (v != null) _ctrl[c.key]!.text = v.toString();
+        if (v != null) newCtrls[c.key]!.text = v.toString();
       }
-  final extra = (me['extra'] ?? {});
-  _extra.text = (extra['notes']?.toString() ?? '');
-  _extraMap = Map<String, dynamic>.from(extra);
-      final certs = (me['extra'] ?? {})['certificates'];
+  final extraDyn = me['extra'];
+  final Map<String, dynamic> newExtraMap = (extraDyn is Map) ? Map<String, dynamic>.from(extraDyn) : <String, dynamic>{};
+  final certs = newExtraMap['certificates'];
+      final List<Map<String, String>> newCerts = [];
       if (certs is List) {
-        _certs = certs
-            .map((e) => {
-                  'type': (e['type'] ?? '').toString(),
-                  'name': (e['name'] ?? '').toString(),
-                  'url': (e['url'] ?? '').toString(),
-                })
-            .toList();
+        newCerts.addAll(certs.map((e) => {
+              'type': (e['type'] ?? '').toString(),
+              'name': (e['name'] ?? '').toString(),
+              'url': (e['url'] ?? '').toString(),
+            }));
       }
+      setState(() {
+        _criteria = crit;
+        // dispose old ctrls
+        for (final c in _ctrl.values) { c.dispose(); }
+        _ctrl
+          ..clear()
+          ..addAll(newCtrls);
+        _extra.text = (newExtraMap['notes']?.toString() ?? '');
+        _extraMap = newExtraMap;
+        _certs = newCerts;
+      });
     } catch (_) {/* ignore */}
   }
 
@@ -142,7 +153,8 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                           'extra': extra,
                         };
                         await apiPut('/profiles/me', body);
-                        if (mounted) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Đã lưu hồ sơ')));
+                        if (!mounted) return;
+                        ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã lưu hồ sơ')));
                       } catch (e) {
                         setState(() => _error = 'Lưu thất bại');
                       } finally {

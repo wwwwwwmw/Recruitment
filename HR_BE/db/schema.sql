@@ -122,25 +122,33 @@ CREATE INDEX IF NOT EXISTS idx_jobs_posted_by ON jobs(posted_by);
 CREATE INDEX IF NOT EXISTS idx_applications_job_id ON applications(job_id);
 CREATE INDEX IF NOT EXISTS idx_offers_application_id ON offers(application_id);
 
--- Candidate profile data (scores per evaluation criteria + extra resume data)
-CREATE TABLE IF NOT EXISTS candidate_profiles (
-  user_id INT PRIMARY KEY REFERENCES users(id) ON DELETE CASCADE,
-  scores JSONB,
-  extra JSONB,
-  created_at TIMESTAMP DEFAULT now(),
-  updated_at TIMESTAMP DEFAULT now()
-);
-CREATE INDEX IF NOT EXISTS idx_candidate_profiles_user ON candidate_profiles(user_id);
-
--- Evaluation criteria catalog used for scoring profiles/applications
-CREATE TABLE IF NOT EXISTS evaluation_criteria (
+-- Notifications to inform users of interviews, offers, etc.
+CREATE TABLE IF NOT EXISTS notifications (
   id SERIAL PRIMARY KEY,
-  key TEXT UNIQUE NOT NULL,
-  label TEXT NOT NULL,
-  min NUMERIC NOT NULL DEFAULT 0,
-  max NUMERIC NOT NULL DEFAULT 100,
-  step NUMERIC NOT NULL DEFAULT 1,
-  active BOOLEAN NOT NULL DEFAULT TRUE,
-  created_at TIMESTAMP DEFAULT now(),
-  updated_at TIMESTAMP DEFAULT now()
+  type TEXT NOT NULL, -- interview | offer | other
+  title TEXT NOT NULL,
+  message TEXT,
+  sender_id INT REFERENCES users(id) ON DELETE SET NULL,
+  recipient_id INT REFERENCES users(id) ON DELETE CASCADE,
+  application_id INT REFERENCES applications(id) ON DELETE SET NULL,
+  interview_id INT REFERENCES interviews(id) ON DELETE SET NULL,
+  offer_id INT REFERENCES offers(id) ON DELETE SET NULL,
+  is_read BOOLEAN DEFAULT FALSE,
+  created_at TIMESTAMP DEFAULT now()
 );
+
+-- Safe alters to evolve existing notifications table if present
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS type TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS title TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS message TEXT;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS sender_id INT REFERENCES users(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS recipient_id INT REFERENCES users(id) ON DELETE CASCADE;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS application_id INT REFERENCES applications(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS interview_id INT REFERENCES interviews(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS offer_id INT REFERENCES offers(id) ON DELETE SET NULL;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS is_read BOOLEAN DEFAULT FALSE;
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT now();
+-- Legacy compatibility column so older code reading user_id still works
+ALTER TABLE notifications ADD COLUMN IF NOT EXISTS user_id INT REFERENCES users(id) ON DELETE CASCADE;
+
+CREATE INDEX IF NOT EXISTS idx_notifications_recipient ON notifications(recipient_id, is_read, created_at DESC);

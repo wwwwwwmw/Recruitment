@@ -3,9 +3,40 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import '../services/auth_state.dart';
+import '../services/notifications_state.dart';
 
-class RoleDashboard extends StatelessWidget {
+class RoleDashboard extends StatefulWidget {
   const RoleDashboard({super.key});
+  @override
+  State<RoleDashboard> createState() => _RoleDashboardState();
+}
+
+class _RoleDashboardState extends State<RoleDashboard> {
+  bool _welcomed = false;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_welcomed && context.read<AuthState>().isLoggedIn) {
+      _welcomed = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) async {
+        final ns = context.read<NotificationsState>();
+        await ns.fetch();
+        if (!mounted) return;
+        if (ns.unreadCount > 0) {
+          final firstUnread = ns.items.firstWhere(
+              (e) => e['is_read'] == false,
+              orElse: () => (ns.items.isNotEmpty ? ns.items.first : {}));
+          final title = firstUnread['title']?.toString() ?? 'Bạn có thông báo mới';
+          ScaffoldMessenger.of(context).showSnackBar(SnackBar(
+            content: Text('$title (${ns.unreadCount} chưa đọc)'),
+            action: SnackBarAction(label: 'Xem', onPressed: () => context.go('/notifications')),
+          ));
+        }
+      });
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     final role = context.watch<AuthState>().role;
@@ -14,6 +45,7 @@ class RoleDashboard extends StatelessWidget {
         : role == 'recruiter'
             ? 'Bảng điều khiển Nhà tuyển dụng'
             : 'Bảng điều khiển Thí sinh';
+
     final List<_NavTile> tiles = [];
     if (role == 'admin' || role == 'recruiter') {
       tiles.addAll([
@@ -34,13 +66,33 @@ class RoleDashboard extends StatelessWidget {
       if (role == 'recruiter') _NavTile('Ứng viên của tôi', '/my-candidates', Icons.people_outline),
       if (role != 'recruiter') _NavTile('Ứng tuyển của tôi', '/applications', Icons.assignment_outlined),
       if (role == 'candidate') _NavTile('Hồ sơ của tôi', '/my-profile', Icons.badge_outlined),
-      _NavTile('Thông báo', '/offers', Icons.mail_outline),
+      _NavTile('Thông báo', '/notifications', Icons.notifications_active_outlined),
       _NavTile('Kết quả', '/results', Icons.verified_outlined),
     ]);
+
+    final unread = context.watch<NotificationsState>().unreadCount;
     return Scaffold(
       appBar: AppBar(
         title: Text(title),
         actions: [
+          IconButton(
+            onPressed: () => context.go('/notifications'),
+            icon: Stack(children: [
+              const Icon(Icons.notifications_outlined),
+              if (unread > 0)
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  child: Container(
+                    padding: const EdgeInsets.all(2),
+                    decoration: BoxDecoration(color: Colors.red, borderRadius: BorderRadius.circular(10)),
+                    constraints: const BoxConstraints(minWidth: 18, minHeight: 18),
+                    child: Text(unread.toString(), style: const TextStyle(color: Colors.white, fontSize: 11), textAlign: TextAlign.center),
+                  ),
+                ),
+            ]),
+            tooltip: 'Thông báo',
+          ),
           TextButton.icon(
             onPressed: () => context.read<AuthState>().logout(),
             icon: const Icon(Icons.logout, color: Colors.white),

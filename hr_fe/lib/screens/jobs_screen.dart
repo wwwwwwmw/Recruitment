@@ -46,7 +46,9 @@ class _JobsScreenState extends State<JobsScreen> {
           builder: (context, snap) {
             if (snap.connectionState != ConnectionState.done) return const Center(child: CircularProgressIndicator());
             if (snap.hasError) return Center(child: Text('Lỗi: ${snap.error}'));
-            var items = (snap.data ?? []).cast<Map<String, dynamic>>();
+      var items = (snap.data ?? [])
+        .map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{})
+        .toList();
             if (role == 'candidate' && !widget.mine) {
               items = items.where((j) => (j['status']?.toString() ?? '') != 'closed').toList();
             }
@@ -191,7 +193,8 @@ class _JobsScreenState extends State<JobsScreen> {
     final desc = TextEditingController(text: job['description']?.toString() ?? '');
     String? error;
     final criteria = await fetchCriteria();
-    final existing = (job['requirements']?['scores'] ?? {}) as Map<String, dynamic>;
+  final existingDyn = job['requirements']?['scores'];
+  final Map<String, dynamic> existing = (existingDyn is Map) ? Map<String, dynamic>.from(existingDyn) : <String, dynamic>{};
     final Map<String, Map<String, dynamic>> reqs = {
       for (final cd in criteria) cd.key: {'important': (existing[cd.key]?['important'] ?? false) == true, 'min': (existing[cd.key]?['min'])}
     };

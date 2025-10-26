@@ -47,7 +47,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       try {
         final apps = await apiGetList('/applications', params: {'mine': 'true', 'job_id': widget.jobId});
         if (apps.isNotEmpty) {
-          final a = (apps.first as Map<String, dynamic>);
+          final first = apps.first;
+          final a = first is Map ? Map<String, dynamic>.from(first) : <String, dynamic>{};
           _name.text = a['full_name']?.toString() ?? _name.text;
           _email.text = a['email']?.toString() ?? _email.text;
           _phone.text = a['phone']?.toString() ?? _phone.text;

@@ -10,8 +10,9 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:hr_fe/main.dart';
 
 void main() {
-  testWidgets('App builds dashboard', (WidgetTester tester) async {
+  testWidgets('App shows login by default', (WidgetTester tester) async {
     await tester.pumpWidget(const HRApp());
-    expect(find.text('HR Recruitment Dashboard'), findsOneWidget);
+    // Since not authenticated, router redirects to /login
+    expect(find.text('Đăng nhập'), findsWidgets);
   });
 }

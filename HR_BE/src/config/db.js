@@ -1,7 +1,6 @@
 import pg from 'pg';
 import dotenv from 'dotenv';
 import { newDb } from 'pg-mem';
-import { readFileSync } from 'node:fs';
 
 dotenv.config();
 
@@ -14,20 +13,13 @@ export function getDb() {
   if (!pool) {
     const connectionString = process.env.DATABASE_URL;
     if (!connectionString) {
-      // Development fallback: in-memory Postgres using pg-mem
-      console.warn('DATABASE_URL not set; using in-memory database (pg-mem) for development.');
-      const mem = newDb({ autoCreateForeignKeyIndices: true });
-      try {
-        const schemaPath = new URL('../../db/schema.sql', import.meta.url);
-        const sql = readFileSync(schemaPath, 'utf8');
-        mem.public.none(sql);
-        console.log('In-memory schema applied.');
-      } catch (e) {
-        console.warn('Unable to apply schema to in-memory DB:', e.message);
-      }
-      const { Pool: MemPool } = mem.adapters.createPg();
+      // In-memory fallback for development
+      const db = newDb({ autoCreateForeignKeyIndices: true });
+      const memPg = db.adapters.createPg();
+      const { Pool: MemPool } = memPg;
       pool = new MemPool();
       usingMem = true;
+      console.warn('DATABASE_URL not set; using in-memory database (pg-mem) for development.');
     } else {
       pool = new Pool({ connectionString, ssl: process.env.DB_SSL === 'true' ? { rejectUnauthorized: false } : undefined });
     }
@@ -47,4 +39,6 @@ export async function pingDb() {
   }
 }
 
-export function isUsingInMemoryDb(){ return usingMem; }
+export function isUsingInMemoryDb(){
+  return usingMem;
+}

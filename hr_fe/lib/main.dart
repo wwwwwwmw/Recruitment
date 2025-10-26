@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 import 'package:provider/provider.dart';
 
 import 'services/auth_state.dart';
+import 'services/notifications_state.dart';
 
 // Screens
 import 'screens/role_dashboard.dart';
@@ -23,6 +24,7 @@ import 'screens/committees_screen.dart';
 import 'screens/my_candidates_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
+import 'screens/notifications_screen.dart';
 
 void main() => runApp(const HRApp());
 
@@ -31,8 +33,11 @@ class HRApp extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return ChangeNotifierProvider(
-      create: (_) => AuthState(),
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => AuthState()),
+        ChangeNotifierProvider(create: (_) => NotificationsState()),
+      ],
       child: Builder(
         builder: (context) {
           final auth = context.watch<AuthState>();
@@ -64,7 +69,7 @@ class HRApp extends StatelessWidget {
                 path: '/applications/:id',
                 builder: (ctx, state) => ApplicationDetailScreen(
                   appId: int.parse(state.pathParameters['id']!),
-                  initialScores: state.extra is Map<String, dynamic> ? state.extra as Map<String, dynamic> : null,
+                  initialScores: state.extra is Map ? Map<String, dynamic>.from(state.extra as Map) : null,
                 ),
               ),
               GoRoute(path: '/evaluations', builder: (_, __) => const EvaluationsScreen()),
@@ -74,6 +79,7 @@ class HRApp extends StatelessWidget {
               GoRoute(path: '/offers', builder: (_, __) => const OffersScreen()),
               GoRoute(path: '/reports', builder: (_, __) => const ReportsScreen()),
               GoRoute(path: '/users', builder: (_, __) => const UsersScreen()),
+              GoRoute(path: '/notifications', builder: (_, __) => const NotificationsScreen()),
             ],
           );
 

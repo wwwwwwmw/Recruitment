@@ -1,5 +1,6 @@
 import { getDb } from '../../config/db.js';
 import { sendEmail } from '../../utils/email.js';
+import { createNotification } from '../notifications/service.js';
 
 export async function list(req, res, next) {
   try {
@@ -62,6 +63,23 @@ export async function create(req, res, next) {
     if (app.rows[0]) {
       const html = content || `Xin chào ${app.rows[0].full_name},<br/>Chúng tôi trân trọng mời bạn vào vị trí ${position || ''}. Ngày bắt đầu: ${start_date}.`;
       sendEmail({ to: app.rows[0].email, subject: 'Thư mời nhận việc', html }).catch(()=>{});
+
+      // Notifications (legacy user_id based for compatibility)
+      try{
+        // Candidate notification
+        const u = await getDb().query('SELECT id FROM users WHERE lower(email)=lower($1) LIMIT 1', [app.rows[0].email]);
+        const candidateId = u.rows?.[0]?.id;
+        const job = await getDb().query('SELECT title FROM jobs WHERE id=$1', [app.rows[0].job_id]);
+        const jobTitle = job.rows?.[0]?.title || '';
+        const msg = `Công việc: ${jobTitle} - Vị trí: ${position || ''} - Ngày bắt đầu: ${start_date}`;
+        if (candidateId) await createNotification(candidateId, { title: 'Thư mời nhận việc mới', message: msg, type: 'offer.created', relatedType: 'offer', relatedId: rows[0].id });
+
+        // Sender notification (recruiter/admin)
+        if (senderId) {
+          const msg2 = `Bạn đã gửi thư mời cho ${app.rows[0].full_name} • Công việc: ${jobTitle}`;
+          await createNotification(senderId, { title: 'Bạn đã gửi thư mời nhận việc', message: msg2, type: 'offer.created', relatedType: 'offer', relatedId: rows[0].id });
+        }
+      }catch(_){ /* ignore notification errors */ }
     }
     // Notify recruiter poster of the job (best-effort)
     try{

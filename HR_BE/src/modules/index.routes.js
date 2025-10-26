@@ -12,6 +12,7 @@ import authRoutes from './auth/routes.js';
 import usersRoutes from './users/routes.js';
 import profilesRoutes from './profiles/routes.js';
 import criteriaRoutes from './criteria/routes.js';
+import notificationsRoutes from './notifications/routes.js';
 import { auth, requireRoles } from '../middleware/auth.js';
 
 const router = Router();
@@ -34,5 +35,6 @@ router.use('/reports', auth(), requireRoles('admin','recruiter'), reportsRoutes)
 router.use('/users', usersRoutes);
 router.use('/profiles', profilesRoutes);
 router.use('/criteria', criteriaRoutes);
+router.use('/notifications', auth(), notificationsRoutes);
 
 export default router;

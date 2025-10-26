@@ -1,4 +1,5 @@
 import { getDb } from '../../config/db.js';
+import { createNotification, createNotificationFlexible } from '../notifications/service.js';
 
 export async function list(req, res, next) {
   try {
@@ -49,6 +50,47 @@ export async function create(req, res, next) {
       await getDb().query('INSERT INTO offers (application_id, start_date, position, salary, content) VALUES ($1, $2, $3, $4, $5)', [application_id, startDate, position, salary, html]);
       // Send email now
       try { await (await import('../../utils/email.js')).sendEmail({ to: toEmail, subject: 'Thư mời nhận việc', html }); } catch {}
+    }
+    // Notify candidate when rejected
+    if ((result||'').toLowerCase() === 'rejected'){
+      try{
+        const app = await getDb().query('SELECT full_name, email, job_id FROM applications WHERE id=$1', [application_id]);
+        const fullName = app.rows?.[0]?.full_name || '';
+        const email = app.rows?.[0]?.email || '';
+        let jobTitle = '';
+        if (app.rows?.[0]?.job_id){
+          const j = await getDb().query('SELECT title FROM jobs WHERE id=$1', [app.rows[0].job_id]);
+          jobTitle = j.rows?.[0]?.title || '';
+        }
+        // Find candidate user id by email (best-effort)
+        const user = await getDb().query('SELECT id FROM users WHERE lower(email)=lower($1) LIMIT 1', [email]);
+        const userId = user.rows?.[0]?.id;
+        if (userId){
+          const title = 'Bị loại';
+          const reason = (notes && String(notes).trim().length>0) ? `Lý do: ${notes}` : '';
+          const message = [`Ứng tuyển của bạn đã bị loại`, jobTitle?`Công việc: ${jobTitle}`:'', reason].filter(Boolean).join('\n');
+          // Insert using legacy schema to guarantee persistence
+          await createNotification(userId, { title, message, type: 'result.rejected', relatedType: 'application', relatedId: application_id });
+        }
+        // Always notify the actor (recruiter/admin) who performed the action
+        if (req.user?.id){
+          const title = 'Bạn đã loại ứng viên';
+          const message = [`Ứng tuyển #${application_id}`, jobTitle?`Công việc: ${jobTitle}`:'', fullName?`Ứng viên: ${fullName}`:''].filter(Boolean).join(' • ');
+          await createNotification(req.user.id, { title, message, type: 'result.rejected', relatedType: 'application', relatedId: application_id });
+        }
+        // Also notify job poster if different from actor (best-effort)
+        try{
+          if (app.rows?.[0]?.job_id){
+            const jobRow = await getDb().query('SELECT posted_by FROM jobs WHERE id=$1', [app.rows[0].job_id]);
+            const posterId = jobRow.rows?.[0]?.posted_by;
+            if (posterId && posterId !== req.user?.id){
+              const title = 'Ứng viên đã bị loại';
+              const message = [`Ứng tuyển #${application_id}`, jobTitle?`Công việc: ${jobTitle}`:'', fullName?`Ứng viên: ${fullName}`:''].filter(Boolean).join(' • ');
+              await createNotification(posterId, { title, message, type: 'result.rejected', relatedType: 'application', relatedId: application_id });
+            }
+          }
+        }catch{}
+      }catch(_){ /* ignore notification errors */ }
     }
     res.status(201).json(rows[0]);
   } catch (e) { next(e); }

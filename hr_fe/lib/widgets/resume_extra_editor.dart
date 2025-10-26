@@ -50,6 +50,44 @@ class _ResumeExtraEditorState extends State<ResumeExtraEditor> {
   }
 
   @override
+  void didUpdateWidget(covariant ResumeExtraEditor oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // If parent provides a different initial map (e.g., after async load),
+    // refresh fields to reflect persisted values.
+    if (!identical(oldWidget.initial, widget.initial)) {
+      setState(() {
+        _position.text = (widget.initial['position'] ?? '').toString();
+        _dob.text = (widget.initial['dob'] ?? widget.initial['birthdate'] ?? '').toString();
+        _address.text = (widget.initial['address'] ?? '').toString();
+        _experiences = [];
+        if (widget.initial['experiences'] is List) {
+          _experiences = List<Map<String, String>>.from(
+            List.from(widget.initial['experiences']).map((e) => {
+                  'from': (e['from'] ?? '').toString(),
+                  'to': (e['to'] ?? '').toString(),
+                  'company': (e['company'] ?? '').toString(),
+                  'role': (e['role'] ?? '').toString(),
+                  'description': (e['description'] ?? '').toString(),
+                }),
+          );
+        }
+        _education = [];
+        if (widget.initial['education'] is List) {
+          _education = List<Map<String, String>>.from(
+            List.from(widget.initial['education']).map((e) => {
+                  'from': (e['from'] ?? '').toString(),
+                  'to': (e['to'] ?? '').toString(),
+                  'school': (e['school'] ?? '').toString(),
+                  'major': (e['major'] ?? '').toString(),
+                }),
+          );
+        }
+      });
+      _emit();
+    }
+  }
+
+  @override
   void dispose() {
     _position.dispose();
     _dob.dispose();

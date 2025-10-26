@@ -12,7 +12,10 @@ class _SignupScreenState extends State<SignupScreen>{
   @override void dispose(){ _name.dispose(); _email.dispose(); _password.dispose(); super.dispose(); }
   @override Widget build(BuildContext c){
     return Scaffold(
-      appBar: AppBar(title: const Text('Đăng ký thí sinh')),
+      appBar: AppBar(
+        leading: IconButton(icon: const Icon(Icons.arrow_back), onPressed: ()=> c.go('/login')),
+        title: const Text('Đăng ký thí sinh'),
+      ),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(children: [

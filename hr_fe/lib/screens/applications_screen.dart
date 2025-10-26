@@ -35,7 +35,7 @@ class _ApplicationsScreenState extends State<ApplicationsScreen> {
             switch((s??'').toLowerCase()){
               case 'submitted': return 'đã nộp';
               case 'interviewing': return 'phỏng vấn';
-              case 'offer': return 'đề nghị';
+              case 'offer': return 'thành công';
               case 'accepted': return 'đã nhận';
               case 'hired': return 'được tuyển';
               case 'failed': return 'không đạt';

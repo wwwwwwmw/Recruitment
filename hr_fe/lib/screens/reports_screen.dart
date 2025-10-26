@@ -123,7 +123,7 @@ String _viStatus(String s){
     case 'submitted': return 'Đã nộp';
     case 'screening': return 'Sàng lọc';
     case 'interviewing': return 'Phỏng vấn';
-    case 'offered': return 'Đã gửi thông báo';
+  case 'offered': return 'Thành công';
     case 'hired': return 'Nhận việc';
     case 'rejected': return 'Từ chối/Không đạt';
     case 'failed': return 'Không đạt';
@@ -138,7 +138,7 @@ String _viResult(String r){
     case 'failed': return 'Không đạt';
     case 'rejected': return 'Từ chối';
     case 'hired': return 'Nhận việc';
-    case 'offer': return 'Đã gửi thông báo';
+  case 'offer': return 'Thành công';
     case 'accepted': return 'Chấp nhận';
   }
   return r; // fallback

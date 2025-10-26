@@ -40,14 +40,16 @@ class _OffersScreenState extends State<OffersScreen>{
     if (role=='admin' || role=='recruiter'){
       final params = role=='admin'? <String,dynamic>{} : {'mine':'true'};
       final list = await apiGetList('/jobs', params: params);
-      setState(()=> _jobs = list.cast<Map<String,dynamic>>());
+      setState(()=> _jobs = list.map((e)=> e is Map ? Map<String,dynamic>.from(e) : <String,dynamic>{}).toList());
       if (role=='admin'){
         final users = await apiGetList('/users');
         // Filter to admins/recruiters for sender dropdown
-        setState(()=> _senders = users.cast<Map<String,dynamic>>().where((u){
-          final r = (u['role']??'').toString();
-          return r=='admin' || r=='recruiter';
-        }).toList());
+        setState(()=> _senders = users
+            .map((e)=> e is Map ? Map<String,dynamic>.from(e) : <String,dynamic>{})
+            .where((u){
+              final r = (u['role']??'').toString();
+              return r=='admin' || r=='recruiter';
+            }).toList());
       }
     }
   }
@@ -113,7 +115,8 @@ class _OffersScreenState extends State<OffersScreen>{
             itemCount: items.length,
             separatorBuilder: (_, __)=> const Divider(height: 1),
             itemBuilder: (_, i){
-              final o = items[i] as Map<String, dynamic>;
+              final raw = items[i];
+              final o = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
               return ListTile(
                 title: Text('${o['position']??'Vị trí'} • ${o['start_date']??''}'),
                 subtitle: Text('${o['full_name']??''} • ${o['email']??''} • ${o['job_title']??''}\nNgười gửi: ${o['sender_name']??'-'} • ${o['sender_email']??''}\nMức lương: ${o['salary']?.toString() ?? '-'}'),

@@ -31,15 +31,23 @@ class _EvaluationsScreenState extends State<EvaluationsScreen> {
     final role = context.read<AuthState>().role;
     final params = role == 'admin' ? <String, dynamic>{} : {'mine': 'true'};
     final list = await apiGetList('/jobs', params: params);
-    setState(() => _jobs = list.cast<Map<String, dynamic>>());
+    // Convert defensively to Map<String, dynamic> to avoid LinkedMap<dynamic,dynamic> cast issues on web
+    setState(() => _jobs = list
+        .whereType<dynamic>()
+        .map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{})
+        .toList());
   }
 
   Future<void> _runScreening() async {
     if (_selectedJobId == null) return;
     final data = await apiGet('/evaluations/screening', params: {'job_id': _selectedJobId});
     setState(() {
-      _job = data['job'] as Map<String, dynamic>?;
-      _results = (data['results'] ?? []).cast<Map<String, dynamic>>();
+      final rawJob = data['job'];
+      _job = rawJob is Map ? Map<String, dynamic>.from(rawJob) : null;
+      final rawResults = data['results'];
+      _results = rawResults is List
+          ? rawResults.map((e) => e is Map ? Map<String, dynamic>.from(e) : <String, dynamic>{}).toList()
+          : <Map<String, dynamic>>[];
       _tick++;
     });
   }
@@ -73,7 +81,10 @@ class _EvaluationsScreenState extends State<EvaluationsScreen> {
         if (_selectedJobId != null) 'job_id': _selectedJobId,
         'q': (r['email'] ?? '').toString(),
       });
-      if (list.isNotEmpty) app = (list.first as Map<String, dynamic>);
+      if (list.isNotEmpty) {
+        final first = list.first;
+        if (first is Map) app = Map<String, dynamic>.from(first);
+      }
     } catch (_) {}
     if (app == null) {
       app = await showDialog<Map<String, dynamic>>(context: c, builder: (_) => const ApplicationPickerDialog());
@@ -194,7 +205,11 @@ class _EvaluationsScreenState extends State<EvaluationsScreen> {
               trailing: IconButton(icon: const Icon(Icons.mail_outline), tooltip: 'Gửi thông báo', onPressed: () => _sendOfferFromResult(c, r)),
               onTap: () {
                 final id = r['application_id'];
-                if (id is int) c.push('/applications/$id', extra: {'scores': r['scores'], 'email': r['email'], 'from': '/evaluations'});
+                if (id is int) {
+                  final rawScores = r['scores'];
+                  final scores = rawScores is Map ? Map<String, dynamic>.from(rawScores) : <String, dynamic>{};
+                  c.push('/applications/$id', extra: {'scores': scores, 'email': r['email'], 'from': '/evaluations'});
+                }
               },
             );
           },

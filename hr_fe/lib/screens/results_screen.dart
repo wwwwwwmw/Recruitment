@@ -65,7 +65,7 @@ class _ResultsScreenState extends State<ResultsScreen>{
                 case 'failed': return 'không đạt';
                 case 'rejected': return 'bị loại';
                 case 'hired': return 'được tuyển';
-                case 'offer': return 'đề nghị';
+                case 'offer': return 'thành công';
                 case 'accepted': return 'đã nhận';
                 default: return s??'';
               }
@@ -122,7 +122,7 @@ class _ResultsScreenState extends State<ResultsScreen>{
               DropdownMenuItem(value:'failed', child: Text('Không đạt')),
               DropdownMenuItem(value:'rejected', child: Text('Bị loại')),
               DropdownMenuItem(value:'hired', child: Text('Được tuyển')),
-              DropdownMenuItem(value:'offer', child: Text('Đề nghị')),
+              DropdownMenuItem(value:'offer', child: Text('Thành công')),
               DropdownMenuItem(value:'accepted', child: Text('Đã nhận')),
             ],
             onChanged: (v){ if (v!=null) setState(()=> resultValue=v); },
@@ -163,7 +163,7 @@ class _ResultsScreenState extends State<ResultsScreen>{
               DropdownMenuItem(value:'failed', child: Text('Không đạt')),
               DropdownMenuItem(value:'rejected', child: Text('Bị loại')),
               DropdownMenuItem(value:'hired', child: Text('Được tuyển')),
-              DropdownMenuItem(value:'offer', child: Text('Đề nghị')),
+              DropdownMenuItem(value:'offer', child: Text('Thành công')),
               DropdownMenuItem(value:'accepted', child: Text('Đã nhận')),
             ],
             onChanged: (v){ if (v!=null) setState(()=> resultValue=v); },

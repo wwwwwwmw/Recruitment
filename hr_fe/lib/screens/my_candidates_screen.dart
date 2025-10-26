@@ -10,7 +10,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
     switch((s??'').toLowerCase()){
       case 'submitted': return 'đã nộp';
       case 'interviewing': return 'phỏng vấn';
-      case 'offer': return 'đề nghị';
+  case 'offer': return 'thành công';
       case 'accepted': return 'đã nhận';
       case 'hired': return 'được tuyển';
       case 'failed': return 'không đạt';
@@ -23,7 +23,7 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
   @override void initState(){ super.initState(); _loadJobs(); }
   Future<void> _loadJobs() async {
     final list = await apiGetList('/jobs', params: {'mine':'true'});
-    setState(()=> _jobs = list.cast<Map<String,dynamic>>());
+    setState(()=> _jobs = list.map((e)=> e is Map ? Map<String,dynamic>.from(e) : <String,dynamic>{}).toList());
   }
   Future<List<dynamic>> _load() async {
     final p = <String,dynamic>{'mine':'true'};
@@ -76,7 +76,8 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
               itemCount: items.length,
               separatorBuilder: (_, __)=> const Divider(height: 1),
               itemBuilder: (_, i){
-                final a = items[i] as Map<String, dynamic>;
+                final raw = items[i];
+                final a = raw is Map ? Map<String, dynamic>.from(raw) : <String, dynamic>{};
                 return ListTile(
                   title: Text(a['full_name']?.toString()??''),
                   subtitle: Text('${a['email']??''} • Trạng thái: ${_viStatus(a['status']?.toString())}'),
