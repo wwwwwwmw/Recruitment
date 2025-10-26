@@ -6,6 +6,7 @@ import 'package:provider/provider.dart';
 import '../models/criteria.dart';
 import '../services/api.dart';
 import '../services/auth_state.dart';
+import '../widgets/resume_view.dart';
 
 class ApplicationDetailScreen extends StatefulWidget {
   final int appId;
@@ -99,13 +100,7 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
     ScaffoldMessenger.of(context).showSnackBar(const SnackBar(content: Text('Đã hủy ứng tuyển')));
   }
 
-  String _labelFor(String key) {
-    try {
-      return _criteria.firstWhere((c) => c.key == key).label;
-    } catch (_) {
-      return key;
-    }
-  }
+  // no-op: label resolver removed after switching to ResumeView
 
   @override
   Widget build(BuildContext c) {
@@ -219,70 +214,15 @@ class _ApplicationDetailScreenState extends State<ApplicationDetailScreen> {
                         child: Text('Hồ sơ thí sinh', style: Theme.of(c).textTheme.titleMedium)),
                     const SizedBox(height: 6),
                     Builder(builder: (_) {
-                      final scoresDyn = profile?['scores'] ?? widget.initialScores?['scores'];
-                      final Map<String, dynamic> scores =
-                          (scoresDyn is Map) ? Map<String, dynamic>.from(scoresDyn) : {};
-                      final extra = (profile?['extra'] is Map) ? Map<String, dynamic>.from(profile!['extra']) : {};
-                      if (scores.isEmpty && (extra['notes'] == null)) {
-                        return const Text('Chưa có hồ sơ');
+                      // Combine profile data with any initialScores fallback from navigation args
+                      final Map<String, dynamic> combinedProfile = profile == null
+                          ? <String, dynamic>{}
+                          : Map<String, dynamic>.from(profile!);
+                      if (combinedProfile['scores'] == null && widget.initialScores?['scores'] is Map) {
+                        combinedProfile['scores'] = widget.initialScores!['scores'];
                       }
-
-                      return Card(
-                        child: Padding(
-                          padding: const EdgeInsets.all(12),
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              if (scores.isNotEmpty) ...[
-                                Text('Điểm hồ sơ', style: Theme.of(c).textTheme.titleSmall),
-                                const SizedBox(height: 4),
-                                ...scores.entries.map((e) => Text('${_labelFor(e.key)}: ${e.value}')).toList(),
-                                const SizedBox(height: 8),
-                              ],
-                              if ((extra['notes']?.toString() ?? '').isNotEmpty) ...[
-                                Text('Ghi chú', style: Theme.of(c).textTheme.titleSmall),
-                                const SizedBox(height: 4),
-                                Text(extra['notes'].toString()),
-                              ],
-                              if (extra['certificates'] is List && (extra['certificates'] as List).isNotEmpty) ...[
-                                const SizedBox(height: 8),
-                                Text('Chứng chỉ', style: Theme.of(c).textTheme.titleSmall),
-                                const SizedBox(height: 4),
-                                ...List<Map<String, dynamic>>.from(extra['certificates']).map((cert) {
-                                  final type = (cert['type']?.toString() ?? '').trim();
-                                  final name = (cert['name']?.toString() ?? '').trim();
-                                  final url = (cert['url']?.toString() ?? '').trim();
-                                  return Padding(
-                                    padding: const EdgeInsets.only(bottom: 6),
-                                    child: Column(
-                                      crossAxisAlignment: CrossAxisAlignment.start,
-                                      children: [
-                                        Text('• ${name.isEmpty ? '(Chưa đặt tên)' : name}${type.isEmpty ? '' : ' ($type)'}'),
-                                        if (url.isNotEmpty)
-                                          Padding(
-                                            padding: const EdgeInsets.only(left: 16, top: 2),
-                                            child: Row(
-                                              children: [
-                                                Expanded(
-                                                  child: Text(url, style: const TextStyle(decoration: TextDecoration.underline)),
-                                                ),
-                                                IconButton(
-                                                  icon: const Icon(Icons.copy, size: 18),
-                                                  tooltip: 'Sao chép link',
-                                                  onPressed: () => Clipboard.setData(ClipboardData(text: url)),
-                                                ),
-                                              ],
-                                            ),
-                                          ),
-                                      ],
-                                    ),
-                                  );
-                                }),
-                              ],
-                            ],
-                          ),
-                        ),
-                      );
+                      if (combinedProfile.isEmpty) return const Text('Chưa có hồ sơ');
+                      return ResumeView(app: app, profile: combinedProfile, job: job, criteria: _criteria);
                     }),
                     const SizedBox(height: 80), // padding to avoid bottom button overlay
                   ],

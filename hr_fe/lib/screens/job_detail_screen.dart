@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../services/api.dart';
 import '../services/auth_state.dart';
 import '../utils/job_utils.dart';
+import '../widgets/resume_extra_editor.dart';
 
 class JobDetailScreen extends StatefulWidget {
   final int jobId;
@@ -22,6 +23,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
   final _phone = TextEditingController();
   final _resume = TextEditingController();
   final _cover = TextEditingController();
+  Map<String, dynamic> _profileExtra = {};
+  Map<String, dynamic>? _profile;
   @override
   void initState() {
     super.initState();
@@ -35,6 +38,11 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
       if (me != null) {
         _name.text = me['full_name']?.toString() ?? _name.text;
         _email.text = me['email']?.toString() ?? _email.text;
+        try {
+          _profile = await apiGet('/profiles/me');
+          final extra = (_profile?['extra'] is Map) ? Map<String, dynamic>.from(_profile!['extra']) : <String, dynamic>{};
+          _profileExtra = extra;
+        } catch (_) {}
       }
       try {
         final apps = await apiGetList('/applications', params: {'mine': 'true', 'job_id': widget.jobId});
@@ -97,9 +105,27 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                       TextField(controller: _resume, decoration: const InputDecoration(labelText: 'Link CV (Drive, v.v.)')),
                       TextField(controller: _cover, maxLines: 4, decoration: const InputDecoration(labelText: 'Thư ứng tuyển')),
                       const SizedBox(height: 12),
+                      ExpansionTile(
+                        initiallyExpanded: true,
+                        title: const Text('Hồ sơ của bạn'),
+                        childrenPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
+                        children: [
+                          ResumeExtraEditor(initial: _profileExtra, onChanged: (m) => _profileExtra = m, dense: true),
+                        ],
+                      ),
+                      const SizedBox(height: 12),
                       ElevatedButton(
                           onPressed: () async {
                             try {
+                              // 1) Update profile.extra first (best-effort)
+                              try {
+                                final extra = Map<String, dynamic>.from(_profileExtra);
+                                await apiPut('/profiles/me', {
+                                  'scores': _profile?['scores'] ?? {},
+                                  'extra': extra,
+                                });
+                              } catch (_) {/* ignore profile save errors when applying */}
+                              // 2) Submit application
                               final body = {
                                 'job_id': widget.jobId,
                                 'full_name': _name.text,

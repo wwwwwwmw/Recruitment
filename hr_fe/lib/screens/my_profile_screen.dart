@@ -3,6 +3,7 @@ import 'package:go_router/go_router.dart';
 
 import '../models/criteria.dart';
 import '../services/api.dart';
+import '../widgets/resume_extra_editor.dart';
 
 class MyProfileScreen extends StatefulWidget {
   const MyProfileScreen({super.key});
@@ -17,6 +18,7 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
   bool _busy = false;
   String? _error;
   List<Map<String, String>> _certs = [];
+  Map<String, dynamic> _extraMap = {};
 
   @override
   void dispose() {
@@ -40,8 +42,9 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
         final v = scores[c.key];
         if (v != null) _ctrl[c.key]!.text = v.toString();
       }
-      final extra = (me['extra'] ?? {})['notes']?.toString() ?? '';
-      _extra.text = extra;
+  final extra = (me['extra'] ?? {});
+  _extra.text = (extra['notes']?.toString() ?? '');
+  _extraMap = Map<String, dynamic>.from(extra);
       final certs = (me['extra'] ?? {})['certificates'];
       if (certs is List) {
         _certs = certs
@@ -89,6 +92,13 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                   decoration: InputDecoration(labelText: cd.label),
                 ));
           }),
+          const SizedBox(height: 8),
+          Align(alignment: Alignment.centerLeft, child: Text('Thông tin hồ sơ', style: Theme.of(c).textTheme.titleMedium)),
+          const SizedBox(height: 6),
+          ResumeExtraEditor(
+            initial: _extraMap,
+            onChanged: (m) => _extraMap = m,
+          ),
           TextField(controller: _extra, maxLines: 4, decoration: const InputDecoration(labelText: 'Thông tin thêm (tuỳ chọn)')),
           const SizedBox(height: 8),
           Align(alignment: Alignment.centerLeft, child: Text('Chứng chỉ & Minh chứng', style: Theme.of(c).textTheme.titleSmall)),
@@ -124,12 +134,12 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
                             if (v != null) scores[cd.key] = v;
                           }
                         }
+                        final extra = Map<String, dynamic>.from(_extraMap);
+                        extra['notes'] = _extra.text.trim().isEmpty ? null : _extra.text.trim();
+                        extra['certificates'] = _certs;
                         final body = {
                           'scores': scores,
-                          'extra': {
-                            'notes': _extra.text.trim().isEmpty ? null : _extra.text.trim(),
-                            'certificates': _certs
-                          }
+                          'extra': extra,
                         };
                         await apiPut('/profiles/me', body);
                         if (mounted) ScaffoldMessenger.of(c).showSnackBar(const SnackBar(content: Text('Đã lưu hồ sơ')));
