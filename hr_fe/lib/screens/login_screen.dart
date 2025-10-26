@@ -23,7 +23,7 @@ class _LoginScreenState extends State<LoginScreen>{
             onPressed: busy? null : () async {
               setState(()=>busy=true); error=null;
               try{ await context.read<AuthState>().login(_email.text, _password.text); context.go('/'); }
-              catch(e){ setState(()=> error='Đăng nhập thất bại'); }
+              catch(e){ setState(()=> error='Đăng nhập thất bại: ${e.toString()}'); }
               finally{ setState(()=>busy=false); }
             },
             child: const Text('Đăng nhập'),

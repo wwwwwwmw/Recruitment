@@ -1,11 +1,30 @@
 import 'dart:convert';
 import 'package:http/http.dart' as http;
+import 'web_host_io.dart' if (dart.library.html) 'web_host_web.dart' as wh;
+import 'api_override.dart';
 
-// Update this if your backend base URL differs
-const String apiBaseUrl = 'http://localhost:4000/api';
+// Backend base URL. Auto-detects host on web (so phone can hit PC IP),
+// falls back to localhost for desktop, and supports override at runtime.
+String apiBaseUrl = (() {
+  // 0) explicit override for non-web or when you want a fixed URL
+  final ov = apiOverrideBaseUrl();
+  if (ov != null && ov.isNotEmpty) return ov;
+  // 1) Web: use current host with port 4000, allow ?api= override or localStorage
+  final webOverride = wh.tryGetStoredApiBaseUrl();
+  if (webOverride != null && webOverride.isNotEmpty) return webOverride;
+  final host = wh.currentHost();
+  final scheme = wh.currentScheme() ?? 'http';
+  final apiPort = wh.defaultApiPort() ?? '4000';
+  if (host.isNotEmpty) return '$scheme://$host:$apiPort/api';
+  // 2) Non-web fallbacks
+  return 'http://localhost:4000/api';
+})();
 
 String? _authToken;
 void setAuthToken(String? token){ _authToken = token; }
+
+// Optional: allow overriding base URL at runtime (e.g., from a settings screen)
+void setApiBaseUrl(String base){ apiBaseUrl = base; wh.persistApiBaseUrlIfWeb(base); }
 
 Uri _buildUri(String path, [Map<String, dynamic>? params]){
   final uri = Uri.parse('$apiBaseUrl$path');

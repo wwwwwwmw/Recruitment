@@ -1,6 +1,4 @@
-import 'dart:convert';
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'api.dart';
 
 class AuthState extends ChangeNotifier {
@@ -11,11 +9,7 @@ class AuthState extends ChangeNotifier {
   String get role => user?['role'] ?? 'guest';
 
   Future<void> login(String email, String password) async {
-    final res = await http.post(Uri.parse('http://localhost:4000/api/auth/login'),
-        headers: {'Content-Type':'application/json'},
-        body: jsonEncode({'email': email, 'password': password}));
-    if (res.statusCode!=200) { throw Exception('Login failed'); }
-    final body = jsonDecode(res.body);
+    final body = await apiPost('/auth/login', {'email': email, 'password': password});
     token = body['token'];
     user = body['user'];
     setAuthToken(token);
@@ -23,11 +17,7 @@ class AuthState extends ChangeNotifier {
   }
 
   Future<void> signup(String name, String email, String password) async {
-    final res = await http.post(Uri.parse('http://localhost:4000/api/auth/register'),
-        headers: {'Content-Type':'application/json'},
-        body: jsonEncode({'full_name': name, 'email': email, 'password': password}));
-    if (res.statusCode!=201) { throw Exception('Signup failed'); }
-    final body = jsonDecode(res.body);
+    final body = await apiPost('/auth/register', {'full_name': name, 'email': email, 'password': password});
     token = body['token'];
     user = body['user'];
     setAuthToken(token);

@@ -11,7 +11,8 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
+// Allow cross-origin access in dev so real devices can call the API
+app.use(cors({ origin: true, credentials: true }));
 app.use(express.json({ limit: '1mb' }));
 app.use(express.urlencoded({ extended: true }));
 

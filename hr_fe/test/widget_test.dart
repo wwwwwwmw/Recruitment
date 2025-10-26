@@ -7,7 +7,7 @@
 
 import 'package:flutter_test/flutter_test.dart';
 
-import 'package:hr_fe/main.dart';
+import 'package:recruitment_app/main.dart';
 
 void main() {
   testWidgets('App shows login by default', (WidgetTester tester) async {
