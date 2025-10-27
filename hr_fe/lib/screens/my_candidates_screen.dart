@@ -51,19 +51,24 @@ class _MyCandidatesScreenState extends State<MyCandidatesScreen>{
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.all(8),
-          child: Row(children: [
-            Expanded(child: DropdownButtonFormField<int>(
+          child: LayoutBuilder(builder: (context, constraints){
+            final narrow = constraints.maxWidth < 420;
+            final dd = DropdownButtonFormField<int?>(
+              isExpanded: true,
               initialValue: _selectedJobId,
               items: [
-                const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
-                ..._jobs.map((j)=> DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
+                const DropdownMenuItem<int?>(value: null, child: Text('Tất cả công việc')),
+                ..._jobs.map((j)=> DropdownMenuItem<int?>(value: j['id'] as int, child: Text(j['title']?.toString()??'')))
               ],
               onChanged: (v){ setState(()=> _selectedJobId = v); },
               decoration: const InputDecoration(labelText: 'Lọc theo công việc'),
-            )),
-            const SizedBox(width: 8),
-            Expanded(child: TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm theo tên/email'), onSubmitted: (_)=> setState((){})))
-          ]),
+            );
+            final search = TextField(controller: _search, decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm theo tên/email'), onSubmitted: (_)=> setState((){}));
+            if (narrow){
+              return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [dd, const SizedBox(height: 8), search]);
+            }
+            return Row(children: [Expanded(child: dd), const SizedBox(width: 8), Expanded(child: search)]);
+          }),
         ),
         Expanded(child: FutureBuilder<List<dynamic>>(
           future: _load(),

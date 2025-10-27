@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 import '../models/criteria.dart';
 import '../services/api.dart';
 import '../services/auth_state.dart';
+import '../widgets/job_card.dart';
 
 class JobsScreen extends StatefulWidget {
   final bool mine;
@@ -52,51 +53,40 @@ class _JobsScreenState extends State<JobsScreen> {
             if (role == 'candidate' && !widget.mine) {
               items = items.where((j) => (j['status']?.toString() ?? '') != 'closed').toList();
             }
-            String _viJobStatus(String? s){
-              switch((s??'').toLowerCase()){
-                case 'open': return 'đang tuyển';
-                case 'closed': return 'đã kết thúc';
-                default: return s??'';
-              }
-            }
-            return ListView.separated(
+            return ListView.builder(
               itemCount: items.length,
-              separatorBuilder: (_, __) => const Divider(height: 1),
               itemBuilder: (_, i) {
                 final j = items[i];
-                return ListTile(
-                  title: Text(j['title']?.toString() ?? 'Chưa đặt tiêu đề'),
-                  subtitle: Text('${j['department'] ?? ''}${(j['status'] != null) ? ' • Trạng thái: ${_viJobStatus(j['status']?.toString())}' : ''}'),
-                  onTap: () => role == 'candidate' ? c.go('/jobs/${j['id']}') : null,
-                  trailing: (role == 'admin' || role == 'recruiter')
-                      ? Row(
-                          mainAxisSize: MainAxisSize.min,
-                          children: [
-                            if (role == 'admin' || (role == 'recruiter' && j['posted_by'] == meId))
-                              IconButton(icon: const Icon(Icons.edit), onPressed: () => _editJobDialog(c, j)),
-                            if ((role == 'admin' || (role == 'recruiter' && j['posted_by'] == meId)) && (j['status']?.toString() != 'closed'))
-                              IconButton(
-                                  icon: const Icon(Icons.flag_outlined),
-                                  tooltip: 'Kết thúc tuyển dụng',
-                                  onPressed: () async {
-                                    try {
-                                      await apiPost('/jobs/${j['id']}/close', {});
-                                      if (mounted) setState(() => _tick++);
-                                    } catch (_) {}
-                                  }),
-                            if (role == 'admin' || (role == 'recruiter' && j['posted_by'] == meId))
-                              IconButton(
-                                icon: const Icon(Icons.delete, color: Colors.red),
-                                onPressed: () async {
-                                  try {
-                                    await apiDelete('/jobs/${j['id']}');
-                                    setState(() => _tick++);
-                                  } catch (_) {}
-                                },
-                              ),
-                          ],
-                        )
-                      : null,
+                final adminActions = (role == 'admin' || role == 'recruiter')
+                    ? Row(mainAxisSize: MainAxisSize.min, children: [
+                        if (role == 'admin' || (role == 'recruiter' && j['posted_by'] == meId))
+                          IconButton(icon: const Icon(Icons.edit), onPressed: () => _editJobDialog(c, j)),
+                        if ((role == 'admin' || (role == 'recruiter' && j['posted_by'] == meId)) && (j['status']?.toString() != 'closed'))
+                          IconButton(
+                              icon: const Icon(Icons.flag_outlined),
+                              tooltip: 'Kết thúc tuyển dụng',
+                              onPressed: () async {
+                                try {
+                                  await apiPost('/jobs/${j['id']}/close', {});
+                                  if (mounted) setState(() => _tick++);
+                                } catch (_) {}
+                              }),
+                        if (role == 'admin' || (role == 'recruiter' && j['posted_by'] == meId))
+                          IconButton(
+                            icon: const Icon(Icons.delete, color: Colors.red),
+                            onPressed: () async {
+                              try {
+                                await apiDelete('/jobs/${j['id']}');
+                                setState(() => _tick++);
+                              } catch (_) {}
+                            },
+                          ),
+                      ])
+                    : null;
+                return JobCard(
+                  job: j,
+                  onTap: role == 'candidate' ? () => c.go('/jobs/${j['id']}') : null,
+                  trailing: adminActions,
                 );
               },
             );

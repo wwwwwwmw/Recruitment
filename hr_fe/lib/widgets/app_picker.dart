@@ -65,33 +65,37 @@ class _ApplicationPickerDialogState extends State<ApplicationPickerDialog> {
   Widget build(BuildContext context) {
     return AlertDialog(
       title: const Text('Chọn ứng tuyển'),
-      content: SizedBox(
-          width: 520,
+      content: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 520),
           child: Column(mainAxisSize: MainAxisSize.min, children: [
-            Row(children: [
-              Expanded(
-                  child: DropdownButtonFormField<int>(
+            // Avoid LayoutBuilder inside AlertDialog (IntrinsicWidth can't compute intrinsics for it)
+            Builder(builder: (context) {
+              final screenW = MediaQuery.of(context).size.width;
+              final narrow = screenW < 420;
+              final drop = DropdownButtonFormField<int?>(
+                isExpanded: true,
+                alignment: Alignment.centerLeft,
                 initialValue: _selectedJobId,
                 items: [
-                  const DropdownMenuItem<int>(value: null, child: Text('Tất cả công việc')),
-                  ..._jobs.map((j) => DropdownMenuItem<int>(value: j['id'] as int, child: Text(j['title']?.toString() ?? '')))
+                  const DropdownMenuItem<int?>(value: null, child: Text('Tất cả công việc')),
+                  ..._jobs.map((j) => DropdownMenuItem<int?>(value: j['id'] as int, child: Text(j['title']?.toString() ?? '')))
                 ],
                 onChanged: (v) {
                   setState(() => _selectedJobId = v);
                   _future = _fetch();
                 },
                 decoration: const InputDecoration(labelText: 'Lọc theo công việc'),
-              )),
-              const SizedBox(width: 8),
-              Expanded(
-                  child: TextField(
+              );
+              final search = TextField(
                 controller: _search,
                 decoration: const InputDecoration(prefixIcon: Icon(Icons.search), hintText: 'Tìm theo tên/email'),
-                onSubmitted: (_) {
-                  setState(() => _future = _fetch());
-                },
-              ))
-            ]),
+                onSubmitted: (_) { setState(() => _future = _fetch()); },
+              );
+              if (narrow) {
+                return Column(crossAxisAlignment: CrossAxisAlignment.stretch, children: [drop, const SizedBox(height: 8), search]);
+              }
+              return Row(children: [Expanded(child: drop), const SizedBox(width: 8), Expanded(child: search)]);
+            }),
             const SizedBox(height: 8),
             SizedBox(
                 height: 360,
@@ -105,17 +109,21 @@ class _ApplicationPickerDialogState extends State<ApplicationPickerDialog> {
                     if (snap.hasError) return Center(child: Text('Error: ${snap.error}'));
                     final items = (snap.data ?? []).cast<Map<String, dynamic>>();
                     if (items.isEmpty) return const Center(child: Text('Không có ứng tuyển'));
-                    return ListView.separated(
-                      itemCount: items.length,
-                      separatorBuilder: (_, __) => const Divider(height: 1),
-                      itemBuilder: (_, i) {
-                        final a = items[i];
-                        return ListTile(
-                          title: Text('#${a['id']} • ${a['full_name']}'),
-                          subtitle: Text('${a['email']} • Job #${a['job_id']}'),
-                          onTap: () => Navigator.pop(context, a),
-                        );
-                      },
+                    // Use SingleChildScrollView + Column to avoid ListView (viewport) inside IntrinsicWidth
+                    return SingleChildScrollView(
+                      child: Column(
+                        mainAxisSize: MainAxisSize.min,
+                        children: List.generate(items.length * 2 - 1, (index) {
+                          if (index.isOdd) return const Divider(height: 1);
+                          final i = index ~/ 2;
+                          final a = items[i];
+                          return ListTile(
+                            title: Text('#${a['id']} • ${a['full_name']}'),
+                            subtitle: Text('${a['email']} • Job #${a['job_id']}'),
+                            onTap: () => Navigator.pop(context, a),
+                          );
+                        }),
+                      ),
                     );
                   },
                 )),

@@ -96,22 +96,22 @@ class _MyProfileScreenState extends State<MyProfileScreen> {
         child: Column(children: [
           ..._criteria.map((cd) {
             return Padding(
-                padding: const EdgeInsets.symmetric(vertical: 6),
+                padding: const EdgeInsets.symmetric(vertical: 10),
                 child: TextField(
                   controller: _ctrl[cd.key],
                   keyboardType: TextInputType.number,
                   decoration: InputDecoration(labelText: cd.label),
                 ));
           }),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Align(alignment: Alignment.centerLeft, child: Text('Thông tin hồ sơ', style: Theme.of(c).textTheme.titleMedium)),
-          const SizedBox(height: 6),
+          const SizedBox(height: 10),
           ResumeExtraEditor(
             initial: _extraMap,
             onChanged: (m) => _extraMap = m,
           ),
           TextField(controller: _extra, maxLines: 4, decoration: const InputDecoration(labelText: 'Thông tin thêm (tuỳ chọn)')),
-          const SizedBox(height: 8),
+          const SizedBox(height: 12),
           Align(alignment: Alignment.centerLeft, child: Text('Chứng chỉ & Minh chứng', style: Theme.of(c).textTheme.titleSmall)),
           ..._certs.asMap().entries.map((e) {
             final i = e.key;

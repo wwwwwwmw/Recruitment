@@ -46,8 +46,15 @@ class _NotificationsScreenState extends State<NotificationsScreen> {
               itemBuilder: (ctx, i) {
                 final n = ns.items[i];
                 final mine = (n['recipient_id'] == meId) || (n['user_id'] == meId);
+                // Chọn icon: offer -> mail; phỏng vấn -> giữ nguyên chuông; khác -> mặc định theo trạng thái đọc
+                IconData _iconFor(Map<String,dynamic> n){
+                  final t = (n['type']?.toString() ?? '').toLowerCase();
+                  if (t.startsWith('offer.')) return Icons.mail_outline;
+                  // interview.* giữ nguyên theo trạng thái đọc
+                  return n['is_read'] == true ? Icons.notifications_none : Icons.notifications_active_outlined;
+                }
                 return ListTile(
-                  leading: Icon(n['is_read'] == true ? Icons.notifications_none : Icons.notifications_active_outlined),
+                  leading: Icon(_iconFor(n)),
                   title: Text(n['title']?.toString() ?? ''),
                   subtitle: Text(n['message']?.toString() ?? ''),
                   trailing: (n['is_read'] == true || !mine)

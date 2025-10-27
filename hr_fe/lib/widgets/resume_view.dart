@@ -145,7 +145,18 @@ class ResumeView extends StatelessWidget {
           final period = _join([e['from'], e['to']], sep: ' - ');
           final school = (e['school'] ?? '').toString();
           final major = (e['major'] ?? '').toString();
-          return _bullet(context, [period, school, major].where((p) => p.toString().trim().isNotEmpty).join(' · '));
+          return Padding(
+            padding: const EdgeInsets.only(bottom: 10),
+            child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
+              Row(children: [
+                const Icon(Icons.circle, size: 6),
+                const SizedBox(width: 8),
+                Expanded(child: Text(period.isEmpty ? 'Thời gian' : period, style: Theme.of(context).textTheme.bodyMedium?.copyWith(fontWeight: FontWeight.w600))),
+              ]),
+              if (school.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 14, top: 2), child: Text('Trường/Đơn vị: $school')),
+              if (major.isNotEmpty) Padding(padding: const EdgeInsets.only(left: 14, top: 2), child: Text('Chuyên ngành: $major')),
+            ]),
+          );
         }),
 
       if (certs.isNotEmpty) ...[

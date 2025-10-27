@@ -159,31 +159,62 @@ class _EvaluationsScreenState extends State<EvaluationsScreen> {
       body: Column(children: [
         Padding(
           padding: const EdgeInsets.all(8.0),
-          child: Row(children: [
-            Expanded(
+          child: LayoutBuilder(builder: (context, constraints) {
+            final narrow = constraints.maxWidth < 420;
+            if (narrow) {
+              return Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  DropdownButtonFormField<int?>(
+                    isExpanded: true,
+                    value: _selectedJobId,
+                    items: [
+                      const DropdownMenuItem<int?>(value: null, child: Text('Chọn công việc')),
+                      ..._jobs.map((j) => DropdownMenuItem<int?>(value: j['id'] as int, child: Text(j['title']?.toString() ?? '')))
+                    ],
+                    onChanged: (v) => setState(() => _selectedJobId = v),
+                    decoration: const InputDecoration(labelText: 'Công việc'),
+                  ),
+                  const SizedBox(height: 8),
+                  DropdownButtonFormField<int>(
+                    isExpanded: true,
+                    value: _minPercent,
+                    decoration: const InputDecoration(labelText: 'Tối thiểu %'),
+                    items: const [0, 50, 60, 70, 80, 90, 100].map((p) => DropdownMenuItem<int>(value: p, child: Text('≥ $p%'))).toList(),
+                    onChanged: (v) { if (v != null) setState(() => _minPercent = v); },
+                  ),
+                  const SizedBox(height: 8),
+                  ElevatedButton(onPressed: _runScreening, child: const Text('Lọc tự động')),
+                ],
+              );
+            }
+            return Row(children: [
+              Expanded(
                 child: DropdownButtonFormField<int?>(
-              initialValue: _selectedJobId,
-              items: [
-                const DropdownMenuItem<int>(value: null, child: Text('Chọn công việc')),
-                ..._jobs.map((j) => DropdownMenuItem<int?>(value: j['id'] as int, child: Text(j['title']?.toString() ?? '')))
-              ],
-              onChanged: (v) => setState(() => _selectedJobId = v),
-              decoration: const InputDecoration(labelText: 'Công việc'),
-            )),
-            const SizedBox(width: 8),
-            SizedBox(
+                  isExpanded: true,
+                  value: _selectedJobId,
+                  items: [
+                    const DropdownMenuItem<int?>(value: null, child: Text('Chọn công việc')),
+                    ..._jobs.map((j) => DropdownMenuItem<int?>(value: j['id'] as int, child: Text(j['title']?.toString() ?? '')))
+                  ],
+                  onChanged: (v) => setState(() => _selectedJobId = v),
+                  decoration: const InputDecoration(labelText: 'Công việc'),
+                ),
+              ),
+              const SizedBox(width: 8),
+              SizedBox(
                 width: 160,
                 child: DropdownButtonFormField<int>(
-                  initialValue: _minPercent,
+                  value: _minPercent,
                   decoration: const InputDecoration(labelText: 'Tối thiểu %'),
                   items: const [0, 50, 60, 70, 80, 90, 100].map((p) => DropdownMenuItem<int>(value: p, child: Text('≥ $p%'))).toList(),
-                  onChanged: (v) {
-                    if (v != null) setState(() => _minPercent = v);
-                  },
-                )),
-            const SizedBox(width: 8),
-            ElevatedButton(onPressed: _runScreening, child: const Text('Lọc tự động'))
-          ]),
+                  onChanged: (v) { if (v != null) setState(() => _minPercent = v); },
+                ),
+              ),
+              const SizedBox(width: 8),
+              ElevatedButton(onPressed: _runScreening, child: const Text('Lọc tự động'))
+            ]);
+          }),
         ),
         if (_job != null)
           Padding(

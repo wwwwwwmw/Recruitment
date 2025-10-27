@@ -25,6 +25,7 @@ import 'screens/my_candidates_screen.dart';
 import 'screens/login_screen.dart';
 import 'screens/signup_screen.dart';
 import 'screens/notifications_screen.dart';
+import 'theme/app_theme.dart';
 
 void main() => runApp(const HRApp());
 
@@ -85,7 +86,7 @@ class HRApp extends StatelessWidget {
 
           return MaterialApp.router(
             title: 'HR Recruitment',
-            theme: ThemeData(colorScheme: ColorScheme.fromSeed(seedColor: Colors.indigo)),
+            theme: AppTheme.light,
             routerConfig: router,
           );
         },

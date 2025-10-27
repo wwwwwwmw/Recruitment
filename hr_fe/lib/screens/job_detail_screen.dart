@@ -111,7 +111,8 @@ class _JobDetailScreenState extends State<JobDetailScreen> {
                         title: const Text('Hồ sơ của bạn'),
                         childrenPadding: const EdgeInsets.symmetric(horizontal: 0, vertical: 8),
                         children: [
-                          ResumeExtraEditor(initial: _profileExtra, onChanged: (m) => _profileExtra = m, dense: true),
+                          // Tăng khoảng cách cho phần "Hồ sơ của bạn" để dễ đọc
+                          ResumeExtraEditor(initial: _profileExtra, onChanged: (m) => _profileExtra = m, dense: false),
                         ],
                       ),
                       const SizedBox(height: 12),

@@ -173,7 +173,8 @@ class _ResumeExtraEditorState extends State<ResumeExtraEditor> {
 
   @override
   Widget build(BuildContext context) {
-    final spacing = widget.dense ? 6.0 : 10.0;
+    // Tăng khoảng cách khi không ở chế độ dense để dễ nhìn trên di động
+    final spacing = widget.dense ? 8.0 : 12.0;
     return Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
       TextField(controller: _position, decoration: const InputDecoration(labelText: 'Chức danh (mong muốn)'), onChanged: (_) => _emit()),
       SizedBox(height: spacing),
@@ -227,7 +228,7 @@ class _ResumeExtraEditorState extends State<ResumeExtraEditor> {
   Widget _experienceItem(BuildContext c, int i) {
     final item = _experiences[i];
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: _monthField(label: 'Từ (năm/tháng)', value: item['from'] ?? '', onPicked: (v){ _experiences[i]['from'] = v; _emit(); })),
@@ -248,7 +249,7 @@ class _ResumeExtraEditorState extends State<ResumeExtraEditor> {
   Widget _educationItem(BuildContext c, int i) {
     final item = _education[i];
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(crossAxisAlignment: CrossAxisAlignment.start, children: [
         Row(children: [
           Expanded(child: _monthField(label: 'Từ (năm/tháng)', value: item['from'] ?? '', onPicked: (v){ _education[i]['from'] = v; _emit(); })),
